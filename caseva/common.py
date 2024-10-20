@@ -11,7 +11,7 @@ def build_return_level_func(
     num_mle_params: int,
     return_level_expr: ca.MX
 ) -> ca.Function:
-    """Build function evaluating return level and uncertainty with delta method.
+    """Build function for return level and uncertainty with delta method.
 
     Parameters
     ----------
@@ -45,7 +45,7 @@ def build_return_level_func(
         [level, level+error, level-error],
         ["theta", "proba", "covar"],
         ["level", "upper", "lower"]
-        )
+    )
 
 
 def empirical_return_periods(

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from caseva.common import empirical_return_periods, ca2np
 
 
-class EVABaseModel(ABC):
+class BaseModel(ABC):
 
     tiny = 1e-8
 
@@ -85,45 +85,60 @@ class EVABaseModel(ABC):
         np.ndarray
             Estimated quantile levels.
         """
-        prob = np.atleast_2d(prob) # for casadi broadcasting
+        prob = np.atleast_2d(prob)  # for casadi broadcasting
         return ca2np(self.quantile(self.theta, prob))
 
-    def prob_and_quantile_plot(self, ax, values, plot_type, **plot_kwargs):
-        """Probability and quantile plots for model evaluation.
+    def ecdf(self, extremes):
 
-        Parameters
-        ----------
-        ax : plt.Axes
-            Axis on which to plot.
-        values : float array-like
-            The extreme observations to evaluate.
-        plot_type : str
-            Which figure to plot. Must be ['quantile' or 'probability']
+        quantiles = np.sort(extremes)
+        probabilities = np.arange(1, len(quantiles) + 1) / (len(quantiles) + 1)
+
+        return quantiles, probabilities
+
+    def quantile_plot(self, ax, extremes, **plot_kwargs):
+        """Plots modelled and empirical quantiles for each point in `extremes`.
+
+        For a good fit model, the points should fall close to a 45-deg line.
 
         Notes
         -----
-        Coles (2001) p. 37.
+        Coles (2001) p. 37 / p. 58.
         """
 
-        sorted_arr = np.sort(values)
-        ecdf = np.arange(1, len(sorted_arr) + 1) / (len(sorted_arr) + 1)
+        emp_quantiles, emp_probas = self.ecdf(extremes)
+        model_quantiles = self.eval_quantile(emp_probas)
 
-        if plot_type == "quantile":
+        ax.plot(model_quantiles, emp_quantiles, "o", markersize=4, **plot_kwargs)
 
-            ax.plot(self.eval_quantile(ecdf), sorted_arr , "o", **plot_kwargs)
-
-            eval_line_start = (self.eval_quantile(ecdf).min(), sorted_arr.min())
-            ax.axline(eval_line_start, slope=1)
-
-        elif plot_type == "probability":
-            ax.plot(ecdf, self.cdf(sorted_arr), "o", **plot_kwargs)
-            ax.axline((0,0), slope=1)
-
-        else:
-            raise ValueError("'plot_type' must be 'quantile' or 'probability'.")
+        # Starting and ending points for the 45-deg line.
+        line_start = min(model_quantiles.min(), emp_quantiles.min())
+        ax.axline((line_start, line_start), slope=1)
 
         ax.set_ylabel("Empirical")
-        ax.set_xlabel("Modelled")
+        ax.set_xlabel("Model")
+        ax.set_title("Quantile plot")
+
+        return ax
+
+    def probability_plot(self, ax, extremes, **plot_kwargs):
+        """
+
+        Notes
+        -----
+        Coles (2001) p. 37 / p. 58.
+        """
+
+        emp_quantiles, emp_probas = self.ecdf(extremes)
+        model_probas = self.cdf(emp_quantiles)
+
+        ax.plot(emp_probas, model_probas, "o", markersize=4, **plot_kwargs)
+        ax.axline((0, 0), slope=1)  # 45-deg line for model evaluation.
+
+        ax.set_ylabel("Model")
+        ax.set_xlabel("Empirical")
+        ax.set_title("Probability plot")
+
+        return ax
 
     def return_level_plot(self, ax, return_periods):
         """Plot modelled return levels.
@@ -147,6 +162,7 @@ class EVABaseModel(ABC):
 
         ax.set_xlabel("Return Period")
         ax.set_ylabel("Return Level")
+        ax.set_title("Return level plot")
 
     def density_plot(self, ax, values):
         """Plot observed and modelled probability densities.
@@ -159,11 +175,12 @@ class EVABaseModel(ABC):
             The extreme observations to evaluate. 
         """
 
-        ax.hist(values, density=True)
+        ax.hist(values, density=True, rwidth=0.95)
         density_axis = np.linspace(values.min(), values.max(), 100)
         ax.plot(density_axis, self.pdf(density_axis))
         ax.set_xlabel("z")
         ax.set_ylabel("f(z)")
+        ax.set_title("Density plot")
 
     def model_evaluation_plot(self, **plot_kwargs):
         """Visual model evaluation.
@@ -175,7 +192,6 @@ class EVABaseModel(ABC):
             - density plot
         """
 
-
         if self.__class__.__name__ == "ThresholdExcessModel":
             plot_vals = self.excesses
         elif self.__class__.__name__ == "BlockMaximaModel":
@@ -186,17 +202,17 @@ class EVABaseModel(ABC):
         fig, ax = plt.subplots(2, 2)
 
         # Probability plot
-        self.prob_and_quantile_plot(ax[0,0], plot_vals, "probability", **plot_kwargs)
+        self.probability_plot(ax[0, 0], plot_vals, **plot_kwargs)
 
         # Quantile plot
-        self.prob_and_quantile_plot(ax[0,1], plot_vals, "quantile", **plot_kwargs)
+        self.quantile_plot(ax[0, 1], plot_vals, **plot_kwargs)
 
         # Return level plot
         return_periods = np.linspace(2, 1000, 500)
 
         data_return_period = empirical_return_periods(self.extremes, self.num_years)
         self.return_level_plot(ax[1,0], return_periods)
-        ax[1,0].plot(data_return_period, self.extremes, 'o', **plot_kwargs)
+        ax[1,0].plot(data_return_period, self.extremes, 'o', markersize=4, **plot_kwargs)
 
         # Density plot
         self.density_plot(ax[1,1], plot_vals)

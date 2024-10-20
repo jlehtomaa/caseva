@@ -7,7 +7,7 @@ import casadi as ca
 
 
 from caseva.optimizer import MLEOptimizer
-from caseva.models import EVABaseModel
+from caseva.models import BaseModel
 from caseva.common import build_return_level_func, ca2np
 
 DEFAULT_OPTIMIZER_BOUNDS = np.array([
@@ -16,7 +16,7 @@ DEFAULT_OPTIMIZER_BOUNDS = np.array([
     ])
 
 
-class ThresholdExcessModel(MLEOptimizer, EVABaseModel):
+class ThresholdExcessModel(MLEOptimizer, BaseModel):
     """
     Threshold excess model with a generalized Pareto distribution.
 
@@ -215,7 +215,7 @@ class ThresholdExcessModel(MLEOptimizer, EVABaseModel):
 
     def return_level(self, return_period):
 
-        return_period = np.atleast_2d(return_period) # for casadi broadcasting
+        return_period = np.atleast_2d(return_period)  # for casadi broadcasting
 
         # Expected number of observations over return period:
         exp_obs = return_period * (len(self.data) / self.num_years)
@@ -225,9 +225,14 @@ class ThresholdExcessModel(MLEOptimizer, EVABaseModel):
         exc_proba = len(self.extremes) / len(self.data) # exc_frac
 
         theta = np.concatenate([[exc_proba], self.theta])
+
         covar = self.get_covar(exc_proba=exc_proba)
 
-        level = ca2np(self.return_level_fn(theta, exp_obs))
-        error = ca2np(self.return_stder_fn(theta, exp_obs, covar)) * 1.96
+        return self.return_level_fn(
+            theta=theta, proba=1/return_period, covar=covar
+        )
 
-        return {"level": level, "upper": level + error, "lower": level - error}
+        # level = ca2np(self.return_level_fn(theta, 1 / return_period, exp_obs))
+        # #error = ca2np(self.return_stder_fn(theta, exp_obs, covar)) * 1.96
+
+        # return {"level": level, "upper": level + error, "lower": level - error}

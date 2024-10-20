@@ -1,12 +1,13 @@
 """
 Implementation of the classical extreme value model with (annual) block maxima.
+See Coles (2001) Chapter 3.
 """
 
 import numpy as np
 import casadi as ca
 
 from caseva.optimizer import MLEOptimizer
-from caseva.models import EVABaseModel
+from caseva.models import BaseModel
 from caseva.common import build_return_level_func
 
 
@@ -14,9 +15,12 @@ DEFAULT_OPTIM_BOUNDS = np.array([
     [-100, 100],  # Location, \mu
     [1e-8, 100],  # Scale, \sigma
     [-1, 100]])   # Shape, \xi
+"""
+See discussion in Coles (2001) p. 55 for the shape parameter constraints.
+"""
 
 
-class BlockMaximaModel(MLEOptimizer, EVABaseModel):
+class BlockMaximaModel(MLEOptimizer, BaseModel):
     """Classical extreme value model with annual block maxima."""
 
     num_params = 3
@@ -39,13 +43,13 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
         """
 
         MLEOptimizer.__init__(self, seed, max_optim_restarts, DEFAULT_OPTIM_BOUNDS)
-        EVABaseModel.__init__(self, extremes, num_years)
+        BaseModel.__init__(self, extremes, num_years)
 
         self.return_level_fn = build_return_level_func(
             self.num_params, self.return_level_expr)
 
     def constraints_fn(self, theta, extremes):
-        """Builds the constraints passed to the numerical optimizer.
+        """Builds the log likelihood constraints for the numerical optimizer.
 
         Parameters
         ----------
@@ -58,6 +62,11 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
         -------
         constr : list
             Collection of symbolic constraint expressions.
+
+        Notes
+        -----
+        Coles (2001) p. 55 eq. (3.8). The parameter constraint must hold for
+        all elements in `extremes`.
         """
 
         loc, scale, shape = ca.vertsplit(theta)
@@ -83,9 +92,9 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
         extremes : array-like
             The extreme observations used for maximum likelihood estimation.
         """
-        
+
         scale_init = np.sqrt(6. * np.var(extremes)) / np.pi
-        loc_init =  np.mean(extremes) - 0.57722 * scale_init
+        loc_init = np.mean(extremes) - 0.57722 * scale_init
         shape_init = 0.1
 
         return [loc_init, scale_init, shape_init]
@@ -101,6 +110,8 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
         Notes
         -----
         https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution
+        or
+        Coles (2001) p. 47-48, (3.2).
         """
 
         loc, scale, shape = self.theta
@@ -112,7 +123,6 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
             tx = (1. + shape * xnorm) ** (-1. / shape)
 
         return np.exp(-tx)
-
 
     def pdf(self, x):
         """GEV probability density function.
@@ -136,7 +146,6 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
 
         return (1. / scale) * tx ** (shape + 1) * np.exp(-tx)
 
-
     def log_likelihood(self, theta, extremes):
         """GEV log likelihood function symbolic expression.
 
@@ -146,7 +155,7 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
             Maximum likelihood parameter estimate symbolic placeholder.
         extremes : ca.DM
             Extreme value obserations.
-        
+
         Returns
         -------
         ca.MX
@@ -154,19 +163,25 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
 
         Notes
         -----
-        Coles (2001) p. 55 eq. 3.7 - 3.9.
+        Coles (2001) p. 55 eq. (3.7) - (3.9).
 
         """
         loc, scale, shape = ca.vertsplit(theta)
         znorm = (extremes - loc) / scale
         mlogs = -extremes.size1() * ca.log(scale)
 
-        shape_zero = ca.sum1(znorm) + ca.sum1(ca.exp(-znorm))
+        shape_zero = ca.sum1(znorm) + ca.sum1(ca.exp(-znorm))  # Gumbel limit
 
-        shape_nonz = (1. + 1./shape) * ca.sum1(ca.log(1. + shape*znorm)) \
-                   + ca.sum1((1. + shape*znorm) ** (-1./shape))
+        shape_nonz = (
+            (1. + 1. / shape)
+            * ca.sum1(ca.log(1. + shape * znorm))
+            + ca.sum1((1. + shape*znorm) ** (-1./shape))
+        )
 
-        return mlogs - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+        return (
+            mlogs
+            - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+        )
 
     def return_level_expr(self, theta, proba):
         """Builds a Casadi expression for the GEV distribution return level.
@@ -176,18 +191,27 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
         theta : ca.MX
             Casadi symbolic placeholder for the maximum likelihood parameters.
         proba : float
-            Non-exceedance probability.
+            Exceedance probability (corresponding to the 1 / proba return
+            level).
 
         Returns
         -------
         ca.MX
-            Casadi symbolic quantile expression.
+            Casadi symbolic return level expression.
+
+        Notes
+        -----
+        The input probability `proba` is the *exceedance* probability.
+        The return level with 10% exceedance probability is the
+        90th percentile, which we can directly evaluate based on the
+        GEV quantile function.
 
         """
-        return self.quantile(theta, 1 - proba)
+        non_exceedance_proba = 1. - proba
+        return self.quantile(theta, non_exceedance_proba)
 
     def quantile(self, theta, proba):
-        """Builds a Casadi expression for the GEV distribution quantile.
+        """Builds a Casadi expression for the GEV distribution quantiles.
 
         Parameters
         ----------
@@ -199,25 +223,32 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
         Returns
         -------
         ca.MX
-            Casadi symbolic quantile expression.
+            Casadi symbolic quantile expression. Represents a value such that
+            a random variable has a `proba` probability of being less than or
+            equal to that value.
 
         Notes
         -----
-        For details, see Coles (2001) p. 56 eq. 3.10. / Coles 2001 p.49 eq. 3.4
+        For details, see
+        - Coles (2001) p. 49 eq. (3.4)
+        - Coles (2001) p. 56 eq. (3.10)
+
+        Note that the above equations are written in terms of the *extreme*
+        quantiles, using 1 - proba, such that `proba` refers to an exceedance
+        probability. Here, instead, the usual quantile definition is used.
         """
 
-        logp = -ca.log(proba)
+        log_prob = -ca.log(proba)
         loc, scale, shape = ca.vertsplit(theta)
 
-        shape_zero = loc - scale * ca.log(logp)
-        shape_nonz = loc - (scale / shape) * (1. - logp ** (-shape))
+        shape_zero = loc - scale * ca.log(log_prob)
+        shape_nonz = loc - (scale / shape) * (1. - log_prob ** (-shape))
 
         return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
 
     def fit(self):
         """Fit the maximum likelihood parameters."""
         self._fit(self.extremes)
-
 
     def return_level(self, return_period):
         """Infer return level value given a return period.
@@ -233,8 +264,9 @@ class BlockMaximaModel(MLEOptimizer, EVABaseModel):
             The corresponding return level estimate and confidence interval.
         """
 
-        return_period = np.atleast_2d(return_period) # For casadi broadcasting
-        proba = 1. / return_period
+        return_period = np.atleast_2d(return_period)  # For casadi broadcasting
+        exceedance_proba = 1. / return_period
 
         return self.return_level_fn(
-            theta=self.theta, proba=proba, covar=self.covar)
+            theta=self.theta, proba=exceedance_proba, covar=self.covar
+        )

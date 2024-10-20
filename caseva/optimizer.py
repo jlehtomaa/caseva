@@ -82,6 +82,7 @@ class MLEOptimizer(ABC):
             An initial guess for each of the fitted parameters.
         """
 
+    @abstractmethod
     def log_likelihood(self, theta, extremes):
         """Builds the objective function passed to the numerical optimizer.
 
@@ -118,9 +119,14 @@ class MLEOptimizer(ABC):
         theta = opti.variable(self.num_params)
         opti.minimize(-self.log_likelihood(theta, extremes))
 
-        constraints = self.constraints_fn(theta, extremes)
-        for constr in constraints:
-            opti.subject_to(constr)
+        [
+            opti.subject_to(constraint)
+            for constraint in self.constraints_fn(theta, extremes)
+        ]
+
+        # constraints = self.constraints_fn(theta, extremes)
+        # for constr in constraints:
+        #     opti.subject_to(constr)
 
         opti.solver("ipopt", IPOPT_PLUGIN_OPTS, IPOPT_SOLVER_OPTS)
 
@@ -138,7 +144,7 @@ class MLEOptimizer(ABC):
 
         """
 
-        if np.max(extremes) > 100.0:
+        if np.max(np.abs(extremes)) > 100.0:
             warnings.warn("Encountered large data values. Consider rescaling.")
 
         assert np.array(extremes).ndim == 1, "Extremes must be 1-dimensional."
