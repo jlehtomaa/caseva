@@ -270,3 +270,15 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         return self.return_level_fn(
             theta=self.theta, proba=exceedance_proba, covar=self.covar
         )
+
+    def probability_plot(self, ax, **plot_kwargs):
+
+        return self._probability_plot(ax, self.extremes, **plot_kwargs)
+
+    def quantile_plot(self, ax, **plot_kwargs):
+
+        return self._quantile_plot(ax, self.extremes, **plot_kwargs)
+
+    def density_plot(self, ax, **plot_kwargs):
+
+        return self._density_plot(ax, self.extremes, **plot_kwargs)

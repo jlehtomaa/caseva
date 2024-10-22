@@ -24,9 +24,9 @@ def test_coles_example_3_4_1_theta(fitted_model):
     Coles (2001) p. 59 example 3.4.1: Model parameters test.
     """
 
-    fit_theta = fitted_model.theta.round(3)
-    true_theta = np.array([ 3.875, 0.198, -0.05])
-    assert np.isclose(fit_theta, true_theta).all()
+    fit_theta = np.round(fitted_model.theta, 3)
+    expected_theta = np.array([3.875, 0.198, -0.05])
+    assert np.isclose(fit_theta, expected_theta).all()
 
 
 def test_coles_example_3_4_1_covar(fitted_model):
@@ -34,51 +34,45 @@ def test_coles_example_3_4_1_covar(fitted_model):
     Coles (2001) p. 59 example 3.4.1: Model parameter covariance test.
     """
 
-    fit_covar = np.diag(fitted_model.covar).round(5)
-    true_covar = np.array([0.00078, 0.00041, 0.00965])
-    assert np.isclose(fit_covar, true_covar).all()
+    fit_covar = np.round(np.diag(fitted_model.covar), 5)
+    expected_covar = np.array([0.00078, 0.00041, 0.00965])
+    assert np.isclose(fit_covar, expected_covar).all()
 
 
-def test_coles_example_3_4_1_return_level_10(fitted_model):
-    """
-    Coles (2001) p. 60 example 3.4.1: Return period 10 test.
-    """
+@pytest.mark.parametrize(
+    "return_period, expected_results",
+    [
+        (
+            100,
+            {
+                # Coles (2001) p. 60 example 3.4.1, RP-100
+                'level': np.array([4.69]),
+                'upper': np.array([5.]),
+                'lower': np.array([4.38])
+            }
+        ),
+        (
+            10,
+            {
+                # Coles (2001) p. 60 example 3.4.1, RP-10
+                'level': np.array([4.3]),
+                'upper': np. array([4.4]),
+                'lower': np.array([4.19])
+            }
+        )
+    ]
+)
+def test_coles_return_levels(return_period, expected_results, fitted_model):
+    """Return level test from Coles (2001) p. 60 example 3.4.1."""
 
-    fit_values = fitted_model.return_level(10)
+    fit_values = fitted_model.return_level(return_period)
 
     # Rounding.
-    fit_values = {key: val.round(2) for (key, val) in fit_values.items()}
-
-    true_values = {
-        'level': np.array([4.3]),
-        'upper': np. array([4.4]),
-        'lower': np.array([4.19])
-        }
+    fit_values = {key: np.round(val, 2) for (key, val) in fit_values.items()}
 
     checks = [
-        np.isclose(fit_values[key], true_values[key]) for key in fit_values.keys()]
+        np.isclose(fit_values[key], expected_results[key])
+        for key in fit_values.keys()
+    ]
 
     assert all(checks)
-
-
-def test_coles_example_3_4_1_return_level_100(fitted_model):
-    """
-    Coles (2001) p. 60 example 3.4.1: Return period 100 test.
-    """
-
-    fit_values = fitted_model.return_level(100)
-
-    # Rounding.
-    fit_values = {key: val.round(2) for (key, val) in fit_values.items()}
-
-    true_values = {
-        'level': np.array([4.69]),
-        'upper': np.array([5.]),
-        'lower': np.array([4.38])
-        }
-
-    checks = [
-        np.isclose(fit_values[key], true_values[key]) for key in fit_values.keys()]
-
-    assert all(checks)
-    
