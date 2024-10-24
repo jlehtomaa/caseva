@@ -25,16 +25,13 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
     num_params = 3
 
-    def __init__(self, extremes, num_years, max_optim_restarts=0, seed=0):
+    def __init__(self, extremes, max_optim_restarts=0, seed=0):
         """
 
         Parameters
         ----------
         extremes : np.ndarray
             Extreme observations (annual maxima).
-        num_years : int
-            How many years of observations does the data correspond to.
-            Only used for plotting and model evaluation.
         max_optim_restarts : int, default=0
             How many randomly initialized optimizer restarts to perform if no
             solution is found.
@@ -42,8 +39,10 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
             Seed for generating random optimizer restarts.
         """
 
-        MLEOptimizer.__init__(self, seed, max_optim_restarts, DEFAULT_OPTIM_BOUNDS)
-        BaseModel.__init__(self, extremes, num_years)
+        MLEOptimizer.__init__(
+            self, seed, max_optim_restarts, DEFAULT_OPTIM_BOUNDS
+        )
+        BaseModel.__init__(self, extremes, len(extremes))
 
         self.return_level_fn = build_return_level_func(
             self.num_params, self.return_level_expr)
@@ -85,7 +84,8 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         Use the same value as in the 'ismev' R package that accompanies the
         Coles 2001 book: https://github.com/cran/ismev/blob/master/R/gev.R
 
-        The scale_init is based on the method of moments for Gumbel distribution.
+        The scale_init is based on the method of moments for a Gumbel
+        distribution.
 
         Parameters
         ----------
