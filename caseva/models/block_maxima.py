@@ -207,8 +207,9 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         GEV quantile function.
 
         """
-        non_exceedance_proba = 1. - proba
-        return self.quantile(theta, non_exceedance_proba)
+
+        # Evaluate quantile at the corresponding NON-exceedance probability!
+        return self.quantile(theta, 1. - proba)
 
     def quantile(self, theta, proba):
         """Builds a Casadi expression for the GEV distribution quantiles.

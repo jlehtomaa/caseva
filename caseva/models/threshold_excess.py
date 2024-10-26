@@ -8,7 +8,7 @@ import casadi as ca
 
 from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
-from caseva.common import build_return_level_func, ca2np
+from caseva.common import build_return_level_func  # , ca2np
 
 DEFAULT_OPTIMIZER_BOUNDS = np.array([
     [1e-8, 1000],  # Scale, \sigma
@@ -22,14 +22,21 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
     Notes
     -----
-    There are only two parameters for the MLE: the scale and the shape. 
+    There are only two parameters for the MLE: the scale and the shape.
     The threshold exceedance frequency (zeta) is estimated separately.
     See Coles (2001) p.82.
     """
 
     num_params = 2
 
-    def __init__(self, data, threshold, num_years, max_optim_restarts=0, seed=0):
+    def __init__(
+        self,
+        data,
+        threshold,
+        num_years,
+        max_optim_restarts=0,
+        seed=0
+    ):
         """
 
         Parameters
@@ -56,8 +63,10 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         self.return_level_fn = build_return_level_func(
             self.num_params + 1, self.return_level_expr)
 
-        MLEOptimizer.__init__(self, seed, max_optim_restarts, DEFAULT_OPTIMIZER_BOUNDS)
-        EVABaseModel.__init__(self, extremes, num_years)
+        MLEOptimizer.__init__(
+            self, seed, max_optim_restarts, DEFAULT_OPTIMIZER_BOUNDS
+        )
+        BaseModel.__init__(self, extremes, num_years)
 
     def constraints_fn(self, theta, extremes):
         """Builds the constraints passed to the numerical optimizer.
@@ -91,7 +100,8 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         Use the same value as in the 'ismev' R package that accompanies the
         Coles 2001 book: https://github.com/cran/ismev/blob/master/R/gpd.R
 
-        The scale_init is based on the method of moments for Gumbel distribution.
+        The scale_init is based on the method of moments for Gumbel
+        distribution.
 
         Arguments:
         ----------
@@ -107,28 +117,30 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         """GPD cumulative distribution function.
 
         y: threshold excess
-        See Coles (2001) p.75 eq. 4.2
+        See Coles (2001) p.75 eq. (4.2) and p.76 eq. (4.4)
         """
 
         scale, shape = self.theta
 
-        assert np.all(y >= 0.), "Exceedances should be greater than zero!"
-        if np.abs(shape) < self.tiny:
+        if (y <= 0).any():
+            raise ValueError("Exceedances must be strictly greater than zero.")
+
+        if shape < 0:
             support_ub = -scale / shape
-            assert np.all(y) <= support_ub, "Input value outside support."
+            assert np.all(y <= support_ub), "Input value outside of support."
             return 1. - np.exp(-y / scale)
 
-        return 1. - (1. + (shape * y) / scale) ** (-1. / shape)
-
+        return 1. - (1. + shape * y / scale) ** (-1. / shape)
 
     def pdf(self, y):
+        """Hoskins p. 339 eq (2)."""
 
         scale, shape = self.theta
 
         if np.abs(shape) < self.tiny:
-            return (1. / scale) * np.exp(-y / scale)
-        
-        return (1. / scale) * (1 + (shape/scale)*y) **(-(1/shape + 1.))
+            return np.exp(-y / scale) / scale
+
+        return ((1. + shape * y / scale) ** (-(1. / shape + 1.))) / scale
 
     def log_likelihood(self, theta, excesses):
         """Generalized Pareto Distribution log likelihood.
@@ -154,46 +166,41 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         scale, shape = ca.vertsplit(theta)
 
-        xi_zero = (1. / scale) * ca.sum1(excesses)
-        xi_nonz = (1. + 1. / shape) \
-                * ca.sum1(ca.log(1. + shape * excesses / scale))
+        shape_zero = ca.sum1(excesses) / scale
+        shape_nonz = (
+            (1. + 1. / shape)
+            * ca.sum1(ca.log(1. + shape * excesses / scale))
+        )
 
-        loglik = -excesses.size1() * ca.log(scale) \
-               - ca.if_else(ca.fabs(shape) < self.tiny, xi_zero, xi_nonz)
-
-        return loglik
-
+        return (
+            - excesses.size1() * ca.log(scale)
+            - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+        )
 
     def quantile(self, theta, proba):
         """Coles 2001 p.84
 
         Hosking & Wallis (1987): Parameter and Quantile Estimation for the
-        Generalized Pareto Distribution 
-        proba : nonexceedance probability
-        (1 - proba) is the exceedance probability
+        Generalized Pareto Distribution
+        proba is the usual non-exceedance probability
         """
         scale, shape = theta
 
-        xi_zero = -scale * ca.log(1 - proba) # should there be a minus here in from? compare hoskings p.342 vs Coles p.82
-        xi_nonz = -(scale / shape) * (1 - (1 - proba) ** (-shape))
+        shape_zero = - scale * ca.log(1 - proba)
+        shape_nonz = - (scale / shape) * (1. - (1. - proba) ** (-shape))
 
-        return ca.if_else(ca.fabs(shape) < self.tiny, xi_zero, xi_nonz)
+        return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
 
-
-    def return_level_expr(self, theta, exp_obs):
+    def return_level_expr(self, theta, proba):
         """
         Coles (2001)  p. 82. / p.84
-        exp_crossings = N * ny * zeta = N * (n/num_years) * (k/n)
-                      = N * (k / num_years)
+        proba: exceedance proba
         """
 
-        exc_proba, scale, shape = ca.vertsplit(theta)
+        _, scale, shape = ca.vertsplit(theta)
+        nonexceed_prob = 1 - proba
 
-        # Expected number of threshold exceedances over the return period:
-        exp_crossings = exc_proba * exp_obs
-        nonexceedance_prob = 1 - (1 / exp_crossings)
-
-        return self.threshold + self.quantile([scale, shape], nonexceedance_prob)
+        return self.threshold + self.quantile([scale, shape], nonexceed_prob)
 
     def fit(self):
         self._fit(self.excesses)
@@ -217,22 +224,34 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         return_period = np.atleast_2d(return_period)  # for casadi broadcasting
 
-        # Expected number of observations over return period:
-        exp_obs = return_period * (len(self.data) / self.num_years)
-
         # The probability of an individual observation exceeding the
-        # high threshold u (parameter `zeta` in Coles (2001)):
-        exc_proba = len(self.extremes) / len(self.data) # exc_frac
+        # high threshold u.
+        thresh_exc_proba = len(self.extremes) / len(self.data)  # zeta: k / n
 
-        theta = np.concatenate([[exc_proba], self.theta])
+        theta = np.concatenate([[thresh_exc_proba], self.theta])
+        covar = self.get_covar(exc_proba=thresh_exc_proba)
 
-        covar = self.get_covar(exc_proba=exc_proba)
+        # Annualized average rate of exceeding the high threshold u.
+        avg_num_thresh_exceed = len(self.extremes) / self.num_years
+
+        # Given that threshold exceedances happen `avg_num_thresh_exceed`
+        # times per year on average, what is the magnitude of an event that
+        # would, on average, be exceeded only once in, say, 100 years?
+
+        adj_exceed_proba = 1. / (return_period * avg_num_thresh_exceed)
 
         return self.return_level_fn(
-            theta=theta, proba=1/return_period, covar=covar
+            theta=theta, proba=adj_exceed_proba, covar=covar
         )
 
-        # level = ca2np(self.return_level_fn(theta, 1 / return_period, exp_obs))
-        # #error = ca2np(self.return_stder_fn(theta, exp_obs, covar)) * 1.96
+    def probability_plot(self, ax, **plot_kwargs):
 
-        # return {"level": level, "upper": level + error, "lower": level - error}
+        return self._probability_plot(ax, self.excesses, **plot_kwargs)
+
+    def quantile_plot(self, ax, **plot_kwargs):
+
+        return self._quantile_plot(ax, self.excesses, **plot_kwargs)
+
+    def density_plot(self, ax, **plot_kwargs):
+
+        return self._density_plot(ax, self.excesses, **plot_kwargs)
