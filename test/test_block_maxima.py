@@ -1,17 +1,19 @@
+from pathlib import Path
 import pytest
 import pandas as pd
 import numpy as np
 from caseva.models import BlockMaximaModel
 
 
-DIFF_ATOL = 0.01
+DIFF_ATOL = 0.01  # Allowed absolute tolerance for testing fitted parameters.
+PATH_DATA = Path(__file__).parent.parent / "data"
 
 
 @pytest.fixture
 def fitted_model_sealevel():
     """Block maxima model fit to the Port Pirie sea level data (Coles 2001)."""
 
-    data = pd.read_csv("./data/portpirie.csv")
+    data = pd.read_csv(PATH_DATA / "portpirie.csv")
     extremes = data["SeaLevel"]
 
     model = BlockMaximaModel(extremes=extremes)
@@ -24,7 +26,7 @@ def fitted_model_sealevel():
 def fitted_model_glassfiber():
     """Block maxima model fit to the (negated) glassfiber data (Coles 2001)."""
 
-    data = pd.read_csv("./data/glass.csv")
+    data = pd.read_csv(PATH_DATA / "glass.csv")
     extremes = -data["Strength"]
 
     model = BlockMaximaModel(extremes=extremes)

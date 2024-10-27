@@ -8,11 +8,11 @@ import casadi as ca
 
 from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
-from caseva.common import build_return_level_func  # , ca2np
+from caseva.common import build_return_level_func
 
 DEFAULT_OPTIMIZER_BOUNDS = np.array([
-    [1e-8, 1000],  # Scale, \sigma
-    [-1, 1000]     # Shape, \xi
+    [1e-8, 100],  # Scale, \sigma
+    [-1, 100]     # Shape, \xi
     ])
 
 
@@ -31,11 +31,11 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
     def __init__(
         self,
-        data,
-        threshold,
-        num_years,
-        max_optim_restarts=0,
-        seed=0
+        data: np.ndarray,
+        threshold: float,
+        num_years: int,
+        max_optim_restarts: int = 0,
+        seed: int = 0
     ):
         """
 
@@ -58,8 +58,13 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         self.threshold = threshold
 
         extremes = data[data > threshold]
+
+        if extremes.size == 0:
+            raise ValueError("Too high threshold, no values exceed it!")
         self.excesses = extremes - threshold
 
+        # Evaluate return levels with the augmented parameter vector (including
+        # the threshold exceedance probability `zeta`, see Coles (2001) p. 82)
         self.return_level_fn = build_return_level_func(
             self.num_params + 1, self.return_level_expr)
 
@@ -67,6 +72,10 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
             self, seed, max_optim_restarts, DEFAULT_OPTIMIZER_BOUNDS
         )
         BaseModel.__init__(self, extremes, num_years)
+
+        # The probability of an individual observation exceeding the
+        # high threshold u (parameter `zeta` in Coles (2001.)).
+        self.thresh_exc_proba = len(self.extremes) / len(self.data)
 
     def constraints_fn(self, theta, extremes):
         """Builds the constraints passed to the numerical optimizer.
@@ -88,7 +97,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         constr = [
             (self.optim_bounds[:, 0] <= theta) <= self.optim_bounds[:, 1],
-            1. + shape * extremes / scale > 0.0
+            1. + shape * extremes / scale > 1e-6
         ]
 
         return constr
@@ -205,7 +214,8 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
     def fit(self):
         self._fit(self.excesses)
 
-    def get_covar(self, exc_proba):
+    @property
+    def augmented_covar(self):
         """
         exc_proba (zeta = k/n)
 
@@ -215,7 +225,8 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         """
 
         covar = np.zeros((3, 3))
-        covar[0, 0] = exc_proba * (1 - exc_proba) / len(self.data)
+        zeta = self.thresh_exc_proba
+        covar[0, 0] = zeta * (1 - zeta) / len(self.data)  # Binolmial variance
         covar[1:, 1:] = self.covar
 
         return covar
@@ -224,12 +235,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         return_period = np.atleast_2d(return_period)  # for casadi broadcasting
 
-        # The probability of an individual observation exceeding the
-        # high threshold u.
-        thresh_exc_proba = len(self.extremes) / len(self.data)  # zeta: k / n
-
-        theta = np.concatenate([[thresh_exc_proba], self.theta])
-        covar = self.get_covar(exc_proba=thresh_exc_proba)
+        theta = np.concatenate([[self.thresh_exc_proba], self.theta])
 
         # Annualized average rate of exceeding the high threshold u.
         avg_num_thresh_exceed = len(self.extremes) / self.num_years
@@ -241,7 +247,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         adj_exceed_proba = 1. / (return_period * avg_num_thresh_exceed)
 
         return self.return_level_fn(
-            theta=theta, proba=adj_exceed_proba, covar=covar
+            theta=theta, proba=adj_exceed_proba, covar=self.augmented_covar
         )
 
     def probability_plot(self, ax, **plot_kwargs):

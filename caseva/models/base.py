@@ -17,6 +17,7 @@ class BaseModel(ABC):
     def __init__(self, extremes, num_years):
 
         self.theta = None
+        self.covar = None
         self.extremes = extremes
         self.num_years = num_years
 
