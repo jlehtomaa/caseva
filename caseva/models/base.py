@@ -1,28 +1,45 @@
-"""
-Extreme value analysis base model class.
-"""
+"""Extreme value analysis base model class."""
 
 from abc import ABC, abstractmethod
 
 import numpy as np
+import casadi as ca
 import matplotlib.pyplot as plt
 
 from caseva.common import empirical_return_periods, ca2np
+
+DEFAULT_PLOT_RETURN_PERIODS = np.linspace(2, 1000, 500)
 
 
 class BaseModel(ABC):
 
     tiny = 1e-8
 
-    def __init__(self, extremes, num_years):
+    def __init__(self, extremes: np.ndarray, num_years: int):
+        """Base model class for extreme value analysis.
 
-        self.theta = None
-        self.covar = None
+        Parameters
+        ----------
+        extremes : np.ndarray
+            A 1d array of observed values.
+        num_years : int
+            Indicates how many years of observations does `extremes` correspond
+            to. Used for evaluating return levels, not for the fitting.
+        """
+
         self.extremes = extremes
         self.num_years = num_years
 
+        # Following attributes are calculated when calling the `fit` method.
+        self.theta = None
+        self.covar = None
+
     @abstractmethod
-    def quantile(self, theta, proba):
+    def quantile(
+        self,
+        theta: ca.MX | list,
+        proba: ca.DM | float
+    ) -> ca.MX | ca.DM:
         """Builds a Casadi expression for the associated distribution quantile.
 
         Parameters
@@ -34,64 +51,98 @@ class BaseModel(ABC):
 
         Returns
         -------
-        ca.MX
+        ca.MX : ca.MX | ca.DM
             Casadi symbolic quantile expression.
         """
 
     @abstractmethod
-    def cdf(self, x):
+    def cdf(self, x: np.ndarray) -> np.ndarray:
         """Cumulative distribution function for the associated distribution.
 
         Parameters
         ----------
-        x : Union[float, np.ndarray]
-            Sample point.
+        x : np.ndarray
+            Sample points to evaluate.
+
+        Returns
+        -------
+        np.ndarray
+            Cumulative distribution function value between 0 and 1.
         """
 
     @abstractmethod
-    def pdf(self, x):
+    def pdf(self, x: np.ndarray) -> np.ndarray:
         """Probability density function for the associated distribution.
 
         Parameters
         ----------
-        x : Union[float, np.ndarray]
+        x : np.ndarray
             Sample point.
+
+        Returns
+        -------
+        np.ndarray
+            Probability density value.
         """
 
     @abstractmethod
-    def return_level(self, return_period):
+    def return_level(self, return_period: np.ndarray) -> dict[str, np.ndarray]:
         """Infer return level value given a return period.
 
         Parameters
         ----------
-        return_period : float array-like
+        return_period : np.ndarray
             Collection of return periods to evaluate.
 
         Returns
         -------
-        dict
+        dict[str, np.ndarray]
             The corresponding return level estimate and confidence interval.
+            The keys are `level`, `upper`, and `lower`.
         """
 
-    def eval_quantile(self, prob):
+    def eval_quantile(self, prob: np.ndarray) -> np.ndarray:
         """Evaluate the symbolic quantile expression after fitting the params.
 
         Parameters
         ----------
-        prob : float array-like
+        prob : np.ndarray
             The non-exceedance probabilities at which to evaluate.
 
         Returns
         -------
         np.ndarray
             Estimated quantile levels.
+
+        Raises
+        ------
+        ValueError
+        - If the function is called before the model has been fitted.
         """
+
+        if self.theta is None:
+            raise ValueError("Fit the model before evaluating quantiles!")
+
         prob = np.atleast_2d(prob)  # for casadi broadcasting
         return ca2np(self.quantile(self.theta, prob))
 
-    def ecdf(self, extremes):
+    def ecdf(self, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Empirical cumulative distribution function.
 
-        quantiles = np.sort(extremes)
+        Parameters
+        ----------
+        values : np.ndarray
+            Observed data values.
+
+        Returns
+        -------
+        quantiles : np.ndarray
+            Empirical quantile values.
+        probabilities : np.ndarray
+            Empirical (cumulative) probabilities.
+        """
+
+        quantiles = np.sort(values)
         probabilities = np.arange(1, len(quantiles) + 1) / (len(quantiles) + 1)
 
         return quantiles, probabilities
@@ -141,7 +192,13 @@ class BaseModel(ABC):
 
         return ax
 
-    def return_level_plot(self, ax, **plot_kwargs):
+    def return_level_plot(
+        self,
+        ax,
+        return_periods=None,
+        return_level_uncertainty=True,
+        **plot_kwargs
+    ):
         """Plot modelled return levels.
 
         Parameters
@@ -152,17 +209,20 @@ class BaseModel(ABC):
             Return periods to evaluate.
         """
 
-        return_periods = np.linspace(1, 1000, 500)
+        if return_periods is None:
+            return_periods = DEFAULT_PLOT_RETURN_PERIODS
+
         return_levels = self.return_level(return_periods)
 
         ax.plot(return_periods, ca2np(return_levels["level"]))
 
-        upper = ca2np(return_levels["upper"])
-        lower = ca2np(return_levels["lower"])
-        ax.fill_between(return_periods, upper, lower, alpha=0.4)
+        if return_level_uncertainty:
+            upper = ca2np(return_levels["upper"])
+            lower = ca2np(return_levels["lower"])
+            ax.fill_between(return_periods, upper, lower, alpha=0.4)
 
         emp_rp = empirical_return_periods(self.extremes, self.num_years)
-        ax.scatter(emp_rp, self.extremes, **plot_kwargs)
+        ax.scatter(emp_rp.index, emp_rp.values, **plot_kwargs)
 
         ax.set_xscale('log')
 
@@ -170,7 +230,8 @@ class BaseModel(ABC):
         ax.set_ylabel("Return Level")
         ax.set_title("Return level plot")
 
-        ticks_and_labels = [1, 10, 100, 1000]
+        ticks_and_labels = [10, 100, 1000]
+
         ax.set_xticks(ticks_and_labels)
         ax.set_xticklabels(ticks_and_labels)
 
@@ -192,7 +253,11 @@ class BaseModel(ABC):
         ax.set_ylabel("f(z)")
         ax.set_title("Density plot")
 
-    def model_evaluation_plot(self):
+    def model_evaluation_plot(
+        self,
+        return_periods=None,
+        return_level_uncertainty=True,
+    ):
         """Visual model evaluation.
 
         A subplot with:
@@ -212,7 +277,12 @@ class BaseModel(ABC):
         self.quantile_plot(ax[0, 1], **scatter_kwargs)
 
         # Return levels
-        self.return_level_plot(ax[1, 0], **scatter_kwargs)
+        self.return_level_plot(
+            ax[1, 0],
+            return_periods=return_periods,
+            return_level_uncertainty=return_level_uncertainty,
+            **scatter_kwargs
+        )
 
         # Densities
         self.density_plot(ax[1, 1])

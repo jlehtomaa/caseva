@@ -3,8 +3,8 @@ Common helper functionalities used by (almost) all of the implemented models.
 """
 
 import numpy as np
+import pandas as pd
 import casadi as ca
-import matplotlib.pyplot as plt
 
 
 def build_return_level_func(
@@ -48,74 +48,15 @@ def build_return_level_func(
     )
 
 
-def empirical_return_periods(
-    arr,
-    num_years: int
-) -> np.ndarray:
-    """Calculate the empirical return period for each element in an array.
+def empirical_return_periods(values, num_years):
 
-    Parameters
-    ----------
-    arr : np.ndarray | list
-        Input data values.
-    num_years : int
-        Number of years of the observation window.
+    sorted_values = np.sort(values)[::-1]  # descending
+    ranking = np.arange(1, len(sorted_values) + 1)
 
-    Returns
-    -------
-    numpy.ndarray
-        Empirical return period for each element in the original array.
-    """
-
-    arr = np.array(arr)
-    assert arr.ndim == 1, "Input array must have exactly one dimension."
-
-    num_exceedances = np.sum(arr[:, None] <= arr, axis=1)
-    annual_exceedance_freq = num_exceedances / num_years
-    return 1. / annual_exceedance_freq
+    return_periods = (num_years + 1) / ranking
+    return pd.Series(data=sorted_values, index=return_periods)
 
 
 def ca2np(arr: ca.DM) -> np.ndarray:
     """Casadi data array as a 1-dimensional numpy array."""
     return np.array(arr).ravel()
-
-
-def mean_residual_life(data, thresholds=None, conf_level=None, ax=None):
-
-    if thresholds is None:
-
-        smallest = data.min()
-        second_largest = data.sort_values().iloc[-2]
-        thresholds = np.linspace(smallest, second_largest, 100, endpoint=True)
-
-    if conf_level is None:
-        conf_level = 0.95
-
-    avg_exceedances, conf_intervals = [], []
-    # Use approx normality of sample means for confidence intervals.
-    for threshold in thresholds:
-
-        exceedances = data[data > threshold] - threshold
-
-        avg_exceedances.append(
-            exceedances.mean()
-        )
-
-        conf_intervals.append(
-            scipy.stats.norm.interval(
-                alpha=conf_level,
-                loc=exceedances.mean(),
-                scale=exceedances.std() / np.sqrt(len(exceedances))
-            )
-        )
-
-    if ax is None:
-        _, ax = plt.subplots()
-
-    ax.plot(thresholds, avg_exceedances)
-    ax.fill_between(thresholds, *np.transpose(conf_intervals), alpha=0.50)
-
-    ax.set_xlabel("Threshold")
-    ax.set_ylabel("Mean excess")
-
-    return ax
