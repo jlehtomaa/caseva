@@ -207,7 +207,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         GEV quantile function.
 
         """
-
+        print(type(theta), type(proba))
         # Evaluate quantile at the corresponding NON-exceedance probability!
         return self.quantile(theta, 1. - proba)
 

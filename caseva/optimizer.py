@@ -124,10 +124,6 @@ class MLEOptimizer(ABC):
             for constraint in self.constraints_fn(theta, extremes)
         ]
 
-        # constraints = self.constraints_fn(theta, extremes)
-        # for constr in constraints:
-        #     opti.subject_to(constr)
-
         opti.solver("ipopt", IPOPT_PLUGIN_OPTS, IPOPT_SOLVER_OPTS)
 
         return {"opti": opti, "theta": theta}

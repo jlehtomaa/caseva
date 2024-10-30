@@ -71,11 +71,11 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         MLEOptimizer.__init__(
             self, seed, max_optim_restarts, DEFAULT_OPTIMIZER_BOUNDS
         )
-        BaseModel.__init__(self, extremes, num_years)
+        BaseModel.__init__(self, extremes=extremes, num_years=num_years)
 
         # The probability of an individual observation exceeding the
         # high threshold u (parameter `zeta` in Coles (2001.)).
-        self.thresh_exc_proba = len(self.extremes) / len(self.data)
+        self.thresh_exc_proba = len(self.excesses) / len(self.data)
 
     def constraints_fn(self, theta, extremes):
         """Builds the constraints passed to the numerical optimizer.
@@ -208,7 +208,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         _, scale, shape = ca.vertsplit(theta)
         nonexceed_prob = 1 - proba
-
+        print(type([scale, shape]), type(scale), type(shape))
         return self.threshold + self.quantile([scale, shape], nonexceed_prob)
 
     def fit(self):
@@ -238,7 +238,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         theta = np.concatenate([[self.thresh_exc_proba], self.theta])
 
         # Annualized average rate of exceeding the high threshold u.
-        avg_num_thresh_exceed = len(self.extremes) / self.num_years
+        avg_num_thresh_exceed = len(self.excesses) / self.num_years
 
         # Given that threshold exceedances happen `avg_num_thresh_exceed`
         # times per year on average, what is the magnitude of an event that

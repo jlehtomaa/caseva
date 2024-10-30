@@ -54,7 +54,7 @@ def empirical_return_periods(values, num_years):
     ranking = np.arange(1, len(sorted_values) + 1)
 
     return_periods = (num_years + 1) / ranking
-    return pd.Series(data=sorted_values, index=return_periods)
+    return pd.Series(data=sorted_values, index=return_periods).sort_index()
 
 
 def ca2np(arr: ca.DM) -> np.ndarray:

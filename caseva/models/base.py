@@ -1,6 +1,7 @@
 """Extreme value analysis base model class."""
 
 from abc import ABC, abstractmethod
+from typing import Optional, List
 
 import numpy as np
 import casadi as ca
@@ -8,12 +9,26 @@ import matplotlib.pyplot as plt
 
 from caseva.common import empirical_return_periods, ca2np
 
-DEFAULT_PLOT_RETURN_PERIODS = np.linspace(2, 1000, 500)
+
+DEFAULT_PLOT_RETURN_PERIODS = np.linspace(1.1, 1000, 500)
 
 
 class BaseModel(ABC):
+    """Base model class for extreme value analysis.
 
-    tiny = 1e-8
+    Attributes
+    ----------
+    extremes : np.ndarray
+        A 1d array of observed extreme values.
+    num_years : int
+        Indicates how many years of observations does `extremes` correspond to.
+    theta : np.ndarray
+        Fitted parameters of the extreme value distribution.
+    covar : np.ndarray
+        Covariance matric of the fitted extreme value parameters.
+    """
+
+    tiny = 1e-8  # For evaluating values close to zero.
 
     def __init__(self, extremes: np.ndarray, num_years: int):
         """Base model class for extreme value analysis.
@@ -31,28 +46,24 @@ class BaseModel(ABC):
         self.num_years = num_years
 
         # Following attributes are calculated when calling the `fit` method.
-        self.theta = None
-        self.covar = None
+        self.theta: Optional[np.ndarray] = None
+        self.covar: Optional[np.ndarray] = None
 
     @abstractmethod
-    def quantile(
-        self,
-        theta: ca.MX | list,
-        proba: ca.DM | float
-    ) -> ca.MX | ca.DM:
+    def quantile(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
         """Builds a Casadi expression for the associated distribution quantile.
 
         Parameters
         ----------
         theta : ca.MX
             Casadi symbolic placeholder for the maximum likelihood parameters.
-        proba : float
+        proba : ca.MX
             Non-exceedance probability.
 
         Returns
         -------
-        ca.MX : ca.MX | ca.DM
-            Casadi symbolic quantile expression.
+        ca.MX
+            Casadi symbolic quantile (non-exceedance) expression.
         """
 
     @abstractmethod
@@ -147,10 +158,24 @@ class BaseModel(ABC):
 
         return quantiles, probabilities
 
-    def _quantile_plot(self, ax, extremes, **plot_kwargs):
+    def _quantile_plot(
+        self,
+        ax: plt.Axes,
+        extremes: np.ndarray,
+        **scatter_kwargs
+    ) -> plt.Axes:
         """Plots modelled and empirical quantiles for each point in `extremes`.
 
         For a good fit model, the points should fall close to a 45-deg line.
+
+        Parameters
+        ----------
+        ax : plt.Axes
+            The matplotlib axes on which to plot the quantiles.
+        extremes : np.ndarray
+            The observed data.
+        scatter_kwargs
+            Additional style keyword arguments for the scatter plot.
 
         Notes
         -----
@@ -160,7 +185,7 @@ class BaseModel(ABC):
         emp_quantiles, emp_probas = self.ecdf(extremes)
         model_quantiles = self.eval_quantile(emp_probas)
 
-        ax.scatter(model_quantiles, emp_quantiles, **plot_kwargs)
+        ax.scatter(model_quantiles, emp_quantiles, **scatter_kwargs)
 
         # Starting and ending points for the 45-deg line.
         line_start = min(model_quantiles.min(), emp_quantiles.min())
@@ -172,8 +197,24 @@ class BaseModel(ABC):
 
         return ax
 
-    def _probability_plot(self, ax, extremes, **plot_kwargs):
-        """
+    def _probability_plot(
+        self,
+        ax: plt.Axes,
+        extremes: np.ndarray,
+        **scatter_kwargs
+    ) -> plt.Axes:
+        """Plots modelled and empirical distribution funtions.
+
+        For a good fit model, the points should fall close to a 45-deg line.
+
+        Parameters
+        ----------
+        ax : plt.Axes
+            The matplotlib axes on which to plot the distribution function.
+        extremes : np.ndarray
+            The observed data.
+        scatter_kwargs
+            Additional style keyword arguments for the scatter plot.
 
         Notes
         -----
@@ -183,7 +224,7 @@ class BaseModel(ABC):
         emp_quantiles, emp_probas = self.ecdf(extremes)
         model_probas = self.cdf(emp_quantiles)
 
-        ax.scatter(emp_probas, model_probas, **plot_kwargs)
+        ax.scatter(emp_probas, model_probas, **scatter_kwargs)
         ax.axline((0, 0), slope=1)  # 45-deg line for model evaluation.
 
         ax.set_ylabel("Model")
@@ -194,23 +235,34 @@ class BaseModel(ABC):
 
     def return_level_plot(
         self,
-        ax,
-        return_periods=None,
-        return_level_uncertainty=True,
+        ax: plt.Axes,
+        return_periods: Optional[List[int]] = None,
+        return_level_uncertainty: bool = True,
         **plot_kwargs
-    ):
+    ) -> plt.Axes:
         """Plot modelled return levels.
 
         Parameters
         ----------
         ax : plt.Axes
             Axis on which to plot.
-        return_periods : float array-like
-            Return periods to evaluate.
+        return_periods : List[int], optional, default=None
+            Return periods to evaluate. If None, default values are provided.
+        return_level_uncertainty : bool, default=True
+            Whether to add the uncertainty range to the plot.
         """
 
         if return_periods is None:
             return_periods = DEFAULT_PLOT_RETURN_PERIODS
+
+        emp_rp = empirical_return_periods(self.extremes, self.num_years)
+        emp_rp = emp_rp[emp_rp.index >= 1]  # Filter tiny RPs out for visuals.
+
+        # Determining where to start plotting the return levels:
+        # somewhere between the requested lowest return period and the
+        # lowest available empirical value seems to work reasonably well.
+        min_rp = (min(return_periods) + emp_rp.index.min()) / 2.
+        return_periods = [rp for rp in return_periods if rp >= min_rp]
 
         return_levels = self.return_level(return_periods)
 
@@ -221,7 +273,6 @@ class BaseModel(ABC):
             lower = ca2np(return_levels["lower"])
             ax.fill_between(return_periods, upper, lower, alpha=0.4)
 
-        emp_rp = empirical_return_periods(self.extremes, self.num_years)
         ax.scatter(emp_rp.index, emp_rp.values, **plot_kwargs)
 
         ax.set_xscale('log')
@@ -230,24 +281,21 @@ class BaseModel(ABC):
         ax.set_ylabel("Return Level")
         ax.set_title("Return level plot")
 
-        ticks_and_labels = [10, 100, 1000]
+        return ax
 
-        ax.set_xticks(ticks_and_labels)
-        ax.set_xticklabels(ticks_and_labels)
-
-    def _density_plot(self, ax, values):
+    def _density_plot(self, ax: plt.Axes, arr: np.ndarray) -> plt.Axes:
         """Plot observed and modelled probability densities.
 
         Parameters
         ----------
         ax : plt.Axes
             Axis on which to plot.
-        values : float array-like
+        arr : float array-like
             The extreme observations to evaluate.
         """
 
-        ax.hist(values, density=True, rwidth=0.95)
-        density_axis = np.linspace(values.min(), values.max(), 100)
+        ax.hist(arr, density=True, rwidth=0.95)
+        density_axis = np.linspace(arr.min(), arr.max(), 100)
         ax.plot(density_axis, self.pdf(density_axis), color="k")
         ax.set_xlabel("z")
         ax.set_ylabel("f(z)")
@@ -255,10 +303,17 @@ class BaseModel(ABC):
 
     def model_evaluation_plot(
         self,
-        return_periods=None,
-        return_level_uncertainty=True,
-    ):
+        return_periods: Optional[List[int]] = None,
+        return_level_uncertainty: bool = True,
+    ) -> None:
         """Visual model evaluation.
+
+        Parameters
+        ----------
+        return_periods : List[int], optional, default=None
+            Return periods to evaluate. If None, default values are provided.
+        return_level_uncertainty : bool, default=True
+            Whether to add the uncertainty range to the plot.
 
         A subplot with:
             - probability plot
