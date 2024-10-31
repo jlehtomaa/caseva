@@ -11,7 +11,7 @@ from caseva.models import BaseModel
 from caseva.common import build_return_level_func
 
 
-DEFAULT_OPTIM_BOUNDS = np.array([
+OPTIM_BOUNDS = np.array([
     [-100, 100],  # Location, \mu
     [1e-8, 100],  # Scale, \sigma
     [-1, 100]])   # Shape, \xi
@@ -25,24 +25,32 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
     num_params = 3
 
-    def __init__(self, extremes, max_optim_restarts=0, seed=0):
+    def __init__(
+        self,
+        extremes: np.ndarray,
+        max_optim_restarts: int = 0,
+        seed: int = 0
+    ):
         """
 
         Parameters
         ----------
         extremes : np.ndarray
-            Extreme observations (annual maxima).
-        max_optim_restarts : int, default=0
+            A 1d array of observed extreme values (annual maxima).
+        max_optim_restarts : int, default = 0
             How many randomly initialized optimizer restarts to perform if no
             solution is found.
-        seed : int, default=0
+        seed : int, default = 0
             Seed for generating random optimizer restarts.
         """
 
-        MLEOptimizer.__init__(
-            self, seed, max_optim_restarts, DEFAULT_OPTIM_BOUNDS
+        super().__init__(
+            extremes=extremes,
+            seed=seed,
+            max_optim_restarts=max_optim_restarts,
+            num_years=len(extremes),
+            optim_bounds=OPTIM_BOUNDS
         )
-        BaseModel.__init__(self, extremes, len(extremes))
 
         self.return_level_fn = build_return_level_func(
             self.num_params, self.return_level_expr)
@@ -207,7 +215,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         GEV quantile function.
 
         """
-        print(type(theta), type(proba))
+
         # Evaluate quantile at the corresponding NON-exceedance probability!
         return self.quantile(theta, 1. - proba)
 

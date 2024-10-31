@@ -22,15 +22,17 @@ class BaseModel(ABC):
         A 1d array of observed extreme values.
     num_years : int
         Indicates how many years of observations does `extremes` correspond to.
-    theta : np.ndarray
-        Fitted parameters of the extreme value distribution.
-    covar : np.ndarray
-        Covariance matric of the fitted extreme value parameters.
+    theta : Optional[np.ndarray]
+        Fitted parameters of the extreme value distribution. Set when calling
+        the `fit` method.
+    covar : Optional[np.ndarray]
+        Covariance matric of the fitted extreme value parameters. Set when
+        calling the `fit` method.
     """
 
-    tiny = 1e-8  # For evaluating values close to zero.
+    tiny = 1e-8  # Small number for evaluating values close to zero.
 
-    def __init__(self, extremes: np.ndarray, num_years: int):
+    def __init__(self, extremes: np.ndarray, num_years: int, *args, **kwargs):
         """Base model class for extreme value analysis.
 
         Parameters
@@ -39,41 +41,41 @@ class BaseModel(ABC):
             A 1d array of observed values.
         num_years : int
             Indicates how many years of observations does `extremes` correspond
-            to. Used for evaluating return levels, not for the fitting.
+            to. Used for evaluating return levels, not for fitting parameters.
         """
-
+        super().__init__(*args, **kwargs)
         self.extremes = extremes
         self.num_years = num_years
 
-        # Following attributes are calculated when calling the `fit` method.
+        # Attributes calculated when calling the `fit` method.
         self.theta: Optional[np.ndarray] = None
         self.covar: Optional[np.ndarray] = None
 
     @abstractmethod
     def quantile(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
-        """Builds a Casadi expression for the associated distribution quantile.
+        """Symbolic expression for the distribution quantile.
 
         Parameters
         ----------
         theta : ca.MX
-            Casadi symbolic placeholder for the maximum likelihood parameters.
+            Symbolic placeholder for the maximum likelihood parameters.
         proba : ca.MX
             Non-exceedance probability.
 
         Returns
         -------
         ca.MX
-            Casadi symbolic quantile (non-exceedance) expression.
+            Symbolic quantile (non-exceedance) expression.
         """
 
     @abstractmethod
     def cdf(self, x: np.ndarray) -> np.ndarray:
-        """Cumulative distribution function for the associated distribution.
+        """Cumulative distribution function.
 
         Parameters
         ----------
         x : np.ndarray
-            Sample points to evaluate.
+            Sample quantiles to evaluate.
 
         Returns
         -------
@@ -88,17 +90,17 @@ class BaseModel(ABC):
         Parameters
         ----------
         x : np.ndarray
-            Sample point.
+            Sample points.
 
         Returns
         -------
         np.ndarray
-            Probability density value.
+            Probability density values.
         """
 
     @abstractmethod
     def return_level(self, return_period: np.ndarray) -> dict[str, np.ndarray]:
-        """Infer return level value given a return period.
+        """Infer return level values based on return periods.
 
         Parameters
         ----------
@@ -128,13 +130,12 @@ class BaseModel(ABC):
         Raises
         ------
         ValueError
-        - If the function is called before the model has been fitted.
+            If the function is called before the model has been fitted.
         """
 
         if self.theta is None:
             raise ValueError("Fit the model before evaluating quantiles!")
 
-        prob = np.atleast_2d(prob)  # for casadi broadcasting
         return ca2np(self.quantile(self.theta, prob))
 
     def ecdf(self, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -147,10 +148,9 @@ class BaseModel(ABC):
 
         Returns
         -------
-        quantiles : np.ndarray
-            Empirical quantile values.
-        probabilities : np.ndarray
-            Empirical (cumulative) probabilities.
+        tuple[np.ndarray, np.ndarray]
+            (quantiles, probabilities): Quantiles are the sorted `values`,
+            and probabilities are the empirical cumulative probabilities.
         """
 
         quantiles = np.sort(values)
@@ -238,7 +238,7 @@ class BaseModel(ABC):
         ax: plt.Axes,
         return_periods: Optional[List[int]] = None,
         return_level_uncertainty: bool = True,
-        **plot_kwargs
+        **scatter_kwargs
     ) -> plt.Axes:
         """Plot modelled return levels.
 
@@ -250,6 +250,9 @@ class BaseModel(ABC):
             Return periods to evaluate. If None, default values are provided.
         return_level_uncertainty : bool, default=True
             Whether to add the uncertainty range to the plot.
+        scatter_kwargs
+            Additional style keyword arguments for the scatter plot.
+
         """
 
         if return_periods is None:
@@ -273,7 +276,7 @@ class BaseModel(ABC):
             lower = ca2np(return_levels["lower"])
             ax.fill_between(return_periods, upper, lower, alpha=0.4)
 
-        ax.scatter(emp_rp.index, emp_rp.values, **plot_kwargs)
+        ax.scatter(emp_rp.index, emp_rp.values, **scatter_kwargs)
 
         ax.set_xscale('log')
 

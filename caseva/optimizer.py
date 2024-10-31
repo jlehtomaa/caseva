@@ -12,7 +12,7 @@ IPOPT_PLUGIN_OPTS = {
     "ipopt.print_level": 0,
     "print_time": 0,
     "ipopt.sb": "yes",
-    "expand":True
+    "expand": True
     }
 
 IPOPT_SOLVER_OPTS = {
@@ -23,8 +23,15 @@ IPOPT_SOLVER_OPTS = {
 class MLEOptimizer(ABC):
     """Base class for a maximum likelihood estimation in casadi."""
 
-    def __init__(self, seed, max_optim_restarts, optim_bounds):
-        """Base class for a maximum likelihood estimation in casadi.
+    def __init__(
+        self,
+        seed,
+        max_optim_restarts,
+        optim_bounds,
+        *args,
+        **kwargs
+    ):
+        """Base class for a maximum likelihood estimation with Casadi.
 
         Parameters
         ----------
@@ -36,6 +43,7 @@ class MLEOptimizer(ABC):
         optimizer_bounds : np.ndarray, shape=(num_params, 2)
             Upper and lower bound for each optimized parameter.
         """
+        super().__init__(*args, **kwargs)
 
         self.rng = np.random.default_rng(seed)
         self.max_optim_restarts = max_optim_restarts

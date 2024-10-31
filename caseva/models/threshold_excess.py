@@ -208,7 +208,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         _, scale, shape = ca.vertsplit(theta)
         nonexceed_prob = 1 - proba
-        print(type([scale, shape]), type(scale), type(shape))
+
         return self.threshold + self.quantile([scale, shape], nonexceed_prob)
 
     def fit(self):
