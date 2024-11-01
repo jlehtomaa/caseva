@@ -2,7 +2,7 @@
 Implementation of the classical extreme value model with (annual) block maxima.
 See Coles (2001) Chapter 3.
 """
-
+from typing import List, Dict
 import numpy as np
 import casadi as ca
 
@@ -55,7 +55,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         self.return_level_fn = build_return_level_func(
             self.num_params, self.return_level_expr)
 
-    def constraints_fn(self, theta, extremes):
+    def constraints_fn(self, theta: ca.MX, extremes: ca.DM) -> List[ca.MX]:
         """Builds the log likelihood constraints for the numerical optimizer.
 
         Parameters
@@ -67,7 +67,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         Returns
         -------
-        constr : list
+        constr : list of ca.MX
             Collection of symbolic constraint expressions.
 
         Notes
@@ -86,7 +86,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         return constr
 
     @staticmethod
-    def optimizer_initial_guess(extremes):
+    def optimizer_initial_guess(extremes: ca.DM) -> List[float]:
         """Derive the initial guess for the MLE optimization.
 
         Use the same value as in the 'ismev' R package that accompanies the
@@ -97,8 +97,13 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         Parameters
         ----------
-        extremes : array-like
-            The extreme observations used for maximum likelihood estimation.
+        extremes : ca.DM
+            Observed extreme values.
+
+        Returns
+        -------
+        list of float
+            An initial guess for each of the fitted parameters.
         """
 
         scale_init = np.sqrt(6. * np.var(extremes)) / np.pi
@@ -107,18 +112,22 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         return [loc_init, scale_init, shape_init]
 
-    def cdf(self, x):
-        """GEV cumulative distribution function.
+    def cdf(self, x: np.ndarray) -> np.ndarray:
+        """Cumulative distribution function for GEV distribution.
 
         Parameters
         ----------
-        x : Union[float, np.ndarray]
-            Sample point.
+        x : np.ndarray
+            Sample quantiles to evaluate.
+
+        Returns
+        -------
+        np.ndarray
+            Cumulative distribution function value between 0 and 1.
 
         Notes
         -----
-        https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution
-        or
+        https://en.wikipedia.org/wiki/Generalized_extreme_value_distribution or
         Coles (2001) p. 47-48, (3.2).
         """
 
@@ -132,13 +141,18 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         return np.exp(-tx)
 
-    def pdf(self, x):
-        """GEV probability density function.
+    def pdf(self, x: np.ndarray) -> np.ndarray:
+        """Probability density function for GEV distribution.
 
         Parameters
         ----------
-        x : Union[float, np.ndarray]
-            Sample point.
+        x : np.ndarray
+            Sample points.
+
+        Returns
+        -------
+        np.ndarray
+            Probability density values.
 
         Notes
         -----
@@ -174,6 +188,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         Coles (2001) p. 55 eq. (3.7) - (3.9).
 
         """
+
         loc, scale, shape = ca.vertsplit(theta)
         znorm = (extremes - loc) / scale
         mlogs = -extremes.size1() * ca.log(scale)

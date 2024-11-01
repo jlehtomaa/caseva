@@ -1,8 +1,9 @@
 """
-Maximum Likelihood Estimation base model class.
+Maximum Likelihood Estimation base model class. Sets up the Casadi optimizer.
 """
 
 import warnings
+from typing import List, Dict, Any
 from abc import ABC, abstractmethod
 import numpy as np
 import casadi as ca
@@ -18,6 +19,10 @@ IPOPT_PLUGIN_OPTS = {
 IPOPT_SOLVER_OPTS = {
     "max_iter": 1e10
     }
+"""
+Default parameters for the IPOPT solver. For all available options, see
+https://coin-or.github.io/Ipopt/OPTIONS.html
+"""
 
 
 class MLEOptimizer(ABC):
@@ -25,9 +30,9 @@ class MLEOptimizer(ABC):
 
     def __init__(
         self,
-        seed,
-        max_optim_restarts,
-        optim_bounds,
+        seed: int,
+        max_optim_restarts: int,
+        optim_bounds: np.ndarray,
         *args,
         **kwargs
     ):
@@ -59,7 +64,7 @@ class MLEOptimizer(ABC):
         """Number of parameters to fit."""
 
     @abstractmethod
-    def constraints_fn(self, theta, extremes):
+    def constraints_fn(self, theta: ca.MX, extremes: ca.DM) -> List[ca.MX]:
         """Builds the constraints passed to the numerical optimizer.
 
         Parameters
@@ -71,12 +76,12 @@ class MLEOptimizer(ABC):
 
         Returns
         -------
-        constr : list
+        constr : list of ca.MX
             Collection of symbolic constraint expressions.
         """
 
     @abstractmethod
-    def optimizer_initial_guess(self, extremes):
+    def optimizer_initial_guess(self, extremes: ca.DM) -> List[float]:
         """Calculate an initial guess value for the optimizer.
 
         Parameters
@@ -86,12 +91,12 @@ class MLEOptimizer(ABC):
 
         Returns
         -------
-        list
+        list of float
             An initial guess for each of the fitted parameters.
         """
 
     @abstractmethod
-    def log_likelihood(self, theta, extremes):
+    def log_likelihood(self, theta: ca.MX, extremes: ca.DM) -> ca.MX:
         """Builds the objective function passed to the numerical optimizer.
 
         Parameters
@@ -107,7 +112,10 @@ class MLEOptimizer(ABC):
             Symbolic log likelihood expression.
         """
 
-    def initialize_optimizer(self, extremes):
+    def initialize_optimizer(
+        self,
+        extremes: ca.DM
+    ) -> Dict[str, Any]:
         """Builds the symbolic optimization problem.
 
         Arguments:
@@ -118,8 +126,8 @@ class MLEOptimizer(ABC):
         Returns:
         --------
         dict
-            A dictionary containing the symbolic optimization problem (opti)
-            and the symbolic placeholder for the optimal parameters (theta).
+            A dictionary containing the symbolic optimization problem
+            (ca.Opti) and the symbolic placeholder for the parameters (ca.MX).
         """
 
         opti = ca.Opti()
@@ -136,35 +144,51 @@ class MLEOptimizer(ABC):
 
         return {"opti": opti, "theta": theta}
 
-    def _fit(self, extremes):
+    def _fit(self, extremes: np.ndarray) -> None:
         """Fit the MLE model.
 
         Attempts to find a solution up to 1 + self.max_optim_restarts times.
 
         Arguments:
         ----------
-        extremes : Union[list, np.ndarray]
+        extremes : np.ndarray
             The array of observed data. Must be one-dimensional.
 
+        Raises
+        ------
+        ValueError
+            If the input array is not one-dimensional.
+            If the provided initial guess is not the same size as the target
+            parameters being fitted.
+            If the optimization fails and no solution is found.
         """
 
         if np.max(np.abs(extremes)) > 100.0:
-            warnings.warn("Encountered large data values. Consider rescaling.")
+            warnings.warn(
+                "Encountered large data values. Consider rescaling for better "
+                "optimizer performance."
+            )
 
-        assert np.array(extremes).ndim == 1, "Extremes must be 1-dimensional."
+        if np.array(extremes).ndim != 1:
+            raise ValueError("`extremes` must be a 1-dimensional array.")
 
-        extremes = ca.DM(extremes)
+        extremes = ca.DM(extremes)  # From numpy to Casadi data matrix format.
         opti = self.initialize_optimizer(extremes)
 
         initial_guess = self.optimizer_initial_guess(extremes)
-        assert len(initial_guess) == self.num_params, "Wrong size guess!"
+        if len(initial_guess) != self.num_params:
+            raise ValueError(
+                f"Wrong size initial guess. Got {len(initial_guess)} "
+                f"but expected {self.num_params}."
+            )
 
         sol = None
         for iteration in range(1 + self.max_optim_restarts):
 
             if iteration > 0:
                 initial_guess = self.rng.uniform(
-                    self.optim_bounds[:, 0], self.optim_bounds[:, 1])
+                    self.optim_bounds[:, 0], self.optim_bounds[:, 1]
+                )
 
             opti["opti"].set_initial(opti["theta"], initial_guess)
 
@@ -179,7 +203,6 @@ class MLEOptimizer(ABC):
         if sol is None:
             raise ValueError("Optimization failed. No solution found.")
 
-        self.theta = sol.value(opti["theta"])
-
         hessian = sol.value(ca.hessian(opti["opti"].f, opti["opti"].x)[0])
+        self.theta = sol.value(opti["theta"])
         self.covar = np.array(ca.inv(hessian))

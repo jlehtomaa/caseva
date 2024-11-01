@@ -85,7 +85,7 @@ class BaseModel(ABC):
 
     @abstractmethod
     def pdf(self, x: np.ndarray) -> np.ndarray:
-        """Probability density function for the associated distribution.
+        """Probability density function.
 
         Parameters
         ----------
