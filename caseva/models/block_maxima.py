@@ -5,6 +5,7 @@ See Coles (2001) Chapter 3.
 from typing import List, Dict
 import numpy as np
 import casadi as ca
+import matplotlib.pyplot as plt
 
 from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
@@ -14,7 +15,8 @@ from caseva.common import build_return_level_func
 OPTIM_BOUNDS = np.array([
     [-100, 100],  # Location, \mu
     [1e-8, 100],  # Scale, \sigma
-    [-1, 100]])   # Shape, \xi
+    [-1, 100]     # Shape, \xi
+])
 """
 See discussion in Coles (2001) p. 55 for the shape parameter constraints.
 """
@@ -168,7 +170,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         return (1. / scale) * tx ** (shape + 1) * np.exp(-tx)
 
-    def log_likelihood(self, theta, extremes):
+    def log_likelihood(self, theta: ca.MX, extremes: ca.DM) -> ca.MX:
         """GEV log likelihood function symbolic expression.
 
         Parameters
@@ -186,7 +188,6 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         Notes
         -----
         Coles (2001) p. 55 eq. (3.7) - (3.9).
-
         """
 
         loc, scale, shape = ca.vertsplit(theta)
@@ -206,42 +207,14 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
             - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
         )
 
-    def return_level_expr(self, theta, proba):
-        """Builds a Casadi expression for the GEV distribution return level.
+    def quantile(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
+        """Symbolic expression for the GEV distribution quantiles.
 
         Parameters
         ----------
         theta : ca.MX
-            Casadi symbolic placeholder for the maximum likelihood parameters.
-        proba : float
-            Exceedance probability (corresponding to the 1 / proba return
-            level).
-
-        Returns
-        -------
-        ca.MX
-            Casadi symbolic return level expression.
-
-        Notes
-        -----
-        The input probability `proba` is the *exceedance* probability.
-        The return level with 10% exceedance probability is the
-        90th percentile, which we can directly evaluate based on the
-        GEV quantile function.
-
-        """
-
-        # Evaluate quantile at the corresponding NON-exceedance probability!
-        return self.quantile(theta, 1. - proba)
-
-    def quantile(self, theta, proba):
-        """Builds a Casadi expression for the GEV distribution quantiles.
-
-        Parameters
-        ----------
-        theta : ca.MX
-            Casadi symbolic placeholder for the maximum likelihood parameters.
-        proba : float
+            Symbolic placeholder for the maximum likelihood parameters.
+        proba : ca.MX
             Non-exceedance probability.
 
         Returns
@@ -270,22 +243,51 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
 
-    def fit(self):
-        """Fit the maximum likelihood parameters."""
-        self._fit(self.extremes)
-
-    def return_level(self, return_period):
-        """Infer return level value given a return period.
+    def return_level_expr(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
+        """Symbolic expression for the GEV distribution return level.
 
         Parameters
         ----------
-        return_period : float array-like
+        theta : ca.MX
+            Casadi symbolic placeholder for the maximum likelihood parameters.
+        proba : ca.MX
+            Exceedance probability (corresponding to the 1 / proba return
+            level).
+
+        Returns
+        -------
+        ca.MX
+            Casadi symbolic return level expression.
+
+        Notes
+        -----
+        The input probability `proba` is the *exceedance* probability.
+        The return level with 10% exceedance probability is the
+        90th percentile, which we can directly evaluate based on the
+        GEV quantile function.
+
+        """
+
+        # Evaluate quantile at the corresponding NON-exceedance probability!
+        return self.quantile(theta, 1. - proba)
+
+    def fit(self) -> None:
+        """Fit the maximum likelihood parameters."""
+        self._fit(self.extremes)
+
+    def return_level(self, return_period: np.ndarray) -> Dict[str, np.ndarray]:
+        """Infer return level values based on return periods.
+
+        Parameters
+        ----------
+        return_period : np.ndarray
             Collection of return periods to evaluate.
 
         Returns
         -------
-        dict
+        dict[str, np.ndarray]
             The corresponding return level estimate and confidence interval.
+            The keys are `level`, `upper`, and `lower`.
         """
 
         return_period = np.atleast_2d(return_period)  # For casadi broadcasting
@@ -295,14 +297,14 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
             theta=self.theta, proba=exceedance_proba, covar=self.covar
         )
 
-    def probability_plot(self, ax, **plot_kwargs):
-
+    def probability_plot(self, ax: plt.Axes, **plot_kwargs) -> plt.Axes:
+        """Plot empirical and modelled (cumul.) probabilities of extremes."""
         return self._probability_plot(ax, self.extremes, **plot_kwargs)
 
-    def quantile_plot(self, ax, **plot_kwargs):
-
+    def quantile_plot(self, ax: plt.Axes, **plot_kwargs) -> plt.Axes:
+        """Plot empirical and modelled quantiles of extremes."""
         return self._quantile_plot(ax, self.extremes, **plot_kwargs)
 
-    def density_plot(self, ax, **plot_kwargs):
-
+    def density_plot(self, ax: plt.Axes, **plot_kwargs) -> plt.Axes:
+        """Plot empirical and modelled probability densities of extremes."""
         return self._density_plot(ax, self.extremes, **plot_kwargs)

@@ -1,7 +1,7 @@
 """Extreme value analysis base model class."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import numpy as np
 import casadi as ca
@@ -99,7 +99,7 @@ class BaseModel(ABC):
         """
 
     @abstractmethod
-    def return_level(self, return_period: np.ndarray) -> dict[str, np.ndarray]:
+    def return_level(self, return_period: np.ndarray) -> Dict[str, np.ndarray]:
         """Infer return level values based on return periods.
 
         Parameters
