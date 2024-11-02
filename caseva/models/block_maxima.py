@@ -2,7 +2,7 @@
 Implementation of the classical extreme value model with (annual) block maxima.
 See Coles (2001) Chapter 3.
 """
-from typing import List, Dict
+from typing import List, Dict, Optional
 import numpy as np
 import casadi as ca
 import matplotlib.pyplot as plt
@@ -30,6 +30,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
     def __init__(
         self,
         extremes: np.ndarray,
+        num_years: Optional[int] = None,
         max_optim_restarts: int = 0,
         seed: int = 0
     ):
@@ -46,11 +47,14 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
             Seed for generating random optimizer restarts.
         """
 
+        if num_years is None:
+            num_years = len(extremes)
+
         super().__init__(
             extremes=extremes,
             seed=seed,
             max_optim_restarts=max_optim_restarts,
-            num_years=len(extremes),
+            num_years=num_years,
             optim_bounds=OPTIM_BOUNDS
         )
 
