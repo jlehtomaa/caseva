@@ -144,6 +144,36 @@ class MLEOptimizer(ABC):
 
         return {"opti": opti, "theta": theta}
 
+    @property
+    def is_corner_solution(self) -> bool:
+        """Check if the parameter upper and lower bounds are binding.
+
+        This suggests a poor quality fit.
+
+        Returns
+        -------
+        constraints_bind : bool
+            Whether upper or lower parameter limits are binding.
+
+        Raises
+        ------
+        ValueError
+            If the method is called before the parameters have been fit.
+        """
+
+        if self.theta is None:
+            raise ValueError(
+                "`fit` must be called before checking for corner solutions."
+            )
+
+        # Check if either upper or lower bounds are binding.
+        constraints_bind = any(
+            np.isclose(self.theta, self.optim_bounds[:, i]).any()
+            for i in range(2)
+        )
+
+        return constraints_bind
+
     def _fit(self, extremes: np.ndarray) -> None:
         """Fit the MLE model.
 
@@ -206,3 +236,6 @@ class MLEOptimizer(ABC):
         hessian = sol.value(ca.hessian(opti["opti"].f, opti["opti"].x)[0])
         self.theta = sol.value(opti["theta"])
         self.covar = np.array(ca.inv(hessian))
+
+        if self.is_corner_solution:
+            warnings.warn("Corner solution encountered!")

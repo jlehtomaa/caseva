@@ -92,12 +92,12 @@ class PointProcesModel(BlockMaximaModel):
 
         if self.theta is None:
             raise ValueError("Fit the model before evaluating quantiles!")
-        
+
         loc, scale, shape = self.theta
-        
+
         n = len(self.extremes)
         _loc = 1 - np.exp(
-            ((1 + shape * (self.threshold - loc) / scale) ** (-1/shape)) / n
+            ((1 + shape * (self.threshold - loc) / scale) ** (-1/shape)) / self.num_years
         )
         _scale = scale + shape * (self.threshold - loc)
 
