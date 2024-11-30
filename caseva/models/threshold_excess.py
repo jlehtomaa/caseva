@@ -12,8 +12,8 @@ from caseva.models import BaseModel
 from caseva.common import build_return_level_func
 
 OPTIM_BOUNDS = np.array([
-    [1e-8, 100],  # Scale, \sigma
-    [-1, 100]     # Shape, \xi
+    [1e-8, 50],  # Scale, \sigma
+    [-1, 10]     # Shape, \xi
 ])
 
 

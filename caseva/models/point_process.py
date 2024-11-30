@@ -1,6 +1,6 @@
 import numpy as np
 import casadi as ca
-from caseva.models import BlockMaximaModel
+from caseva.models import BlockMaximaModel, ThresholdExcessModel
 from caseva.common import ca2np
 
 
@@ -71,6 +71,60 @@ class PointProcesModel(BlockMaximaModel):
 
         return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
 
+    def cdf(self, z):
+
+        loc, scale, shape = self.theta
+
+        # STEP 1: PARAMETER SCALING.
+        # new_loc = 1 - np.exp(
+        #     ((1 + shape * (self.threshold - loc) / scale) ** (-1/shape))
+        #     / self.num_years
+        # )
+        new_scale = scale + shape * (self.threshold - loc)
+
+
+        if (z <= 0).any():
+            raise ValueError("Exceedances must be strictly greater than zero.")
+
+        if shape < 0:
+            support_upper_limit = -new_scale / shape
+            if np.any(z > support_upper_limit):
+                raise ValueError("Input value outside of support.")
+            return 1. - np.exp(-(z - self.threshold) / new_scale)
+
+        return 1. - (1. + shape * (z - self.threshold) / new_scale) ** (-1. / shape)
+    
+
+    def pdf(self, x: np.ndarray) -> np.ndarray:
+        """Probability density function for Gen-Pareto distribution.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Sample points.
+
+        Returns
+        -------
+        np.ndarray
+            Probability density values.
+
+        Notes
+        -----
+        Hoskins p. 339 eq. (2).
+        """
+
+        loc, scale, shape = self.theta
+
+        # SCALE THE PARAMETERS
+
+        new_scale = scale + shape * (self.threshold - loc)
+
+        if np.abs(shape) < self.tiny:
+            return np.exp(-x / new_scale) / new_scale
+
+        # GPD PDF with x replaced by x-threshold
+        return ((1. + shape * (x - self.threshold) / new_scale) ** (-(1. / shape + 1.))) / new_scale
+
     def eval_quantile(self, prob: np.ndarray) -> np.ndarray:
         """Evaluate the symbolic quantile expression after fitting the params.
 
@@ -95,10 +149,28 @@ class PointProcesModel(BlockMaximaModel):
 
         loc, scale, shape = self.theta
 
-        n = len(self.extremes)
-        _loc = 1 - np.exp(
-            ((1 + shape * (self.threshold - loc) / scale) ** (-1/shape)) / self.num_years
-        )
-        _scale = scale + shape * (self.threshold - loc)
+        # Parameter adjustments to link the GEV parameters to the threshold
+        # exceedance framework.
 
-        return ca2np(self.quantile([_loc, _scale, shape], prob))
+        # Compute the survival function from the CDF of the GEV model to
+        # get the threshold exceedance probability.
+        # Then divide by the number of years to consider the rate of
+        # exceedances relative to the GEV block size.
+
+        # The GEV distribution assumes that in CDF(z), z represents block
+        # maxima (e.g. annual maxima) and the shape, scale, and loc parameters
+        # describe the block-level distribution. If you observe N years of
+        # data, each block corresponds to one year.
+
+        # # STEP 1: PARAMETER SCALING.
+        # new_loc = 1 - np.exp(
+        #     ((1 + shape * (self.threshold - loc) / scale) ** (-1/shape))
+        #     / self.num_years
+        # )
+        new_scale = scale + shape * (self.threshold - loc)
+
+        # STEP 2: USE GPD QUANTILE FUNCTION.
+        shape_zero = - new_scale * ca.log(1 - prob)
+        shape_nonz = - (new_scale / shape) * (1. - (1. - prob) ** (-shape))
+
+        return self.threshold + ca2np(ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz))

@@ -13,9 +13,9 @@ from caseva.common import build_return_level_func
 
 
 OPTIM_BOUNDS = np.array([
-    [-100, 100],  # Location, \mu
-    [1e-8, 100],  # Scale, \sigma
-    [-1, 100]     # Shape, \xi
+    [-100, 50],  # Location, \mu
+    [1e-8, 50],  # Scale, \sigma
+    [-1, 10]     # Shape, \xi
 ])
 """
 See discussion in Coles (2001) p. 55 for the shape parameter constraints.

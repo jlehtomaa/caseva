@@ -4,6 +4,9 @@
 
 conda create --name caseva_env python=3.11.2
 
+todo
+- model.fit(data, threshold)
+- model evaluation plot -> diagnostics_plot
 
 References
 

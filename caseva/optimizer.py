@@ -13,11 +13,12 @@ IPOPT_PLUGIN_OPTS = {
     "ipopt.print_level": 0,
     "print_time": 0,
     "ipopt.sb": "yes",
-    "expand": True
+    "expand": True,
+    "verbose": False
     }
 
 IPOPT_SOLVER_OPTS = {
-    "max_iter": 1e10
+    "max_iter": 10_000
     }
 """
 Default parameters for the IPOPT solver. For all available options, see
@@ -33,6 +34,7 @@ class MLEOptimizer(ABC):
         seed: int,
         max_optim_restarts: int,
         optim_bounds: np.ndarray,
+        result_type: str = "first",
         *args,
         **kwargs
     ):
@@ -45,14 +47,20 @@ class MLEOptimizer(ABC):
         max_optim_restarts : int
             How many randomly initialized optimizer restarts to perform if no
             solution is found on the first try.
-        optimizer_bounds : np.ndarray, shape=(num_params, 2)
+        optim_bounds : np.ndarray, shape=(num_params, 2)
             Upper and lower bound for each optimized parameter.
+        result_type : str, default=first
+            When `max_optim_restarts` is > 0, the solver can either return the
+            first solution that was found with `result_type` set to "first",
+            or the one with the highest likelihood by setting this variable
+            to "best".
         """
         super().__init__(*args, **kwargs)
 
         self.rng = np.random.default_rng(seed)
         self.max_optim_restarts = max_optim_restarts
         self.optim_bounds = optim_bounds
+        self.result_type = result_type
 
         # Assigned when calling `_fit`
         self.theta = None
@@ -212,7 +220,8 @@ class MLEOptimizer(ABC):
                 f"but expected {self.num_params}."
             )
 
-        sol = None
+        best_sol = None
+        best_neg_log_lik = np.inf
         for iteration in range(1 + self.max_optim_restarts):
 
             if iteration > 0:
@@ -225,17 +234,26 @@ class MLEOptimizer(ABC):
             try:
                 sol = opti["opti"].solve()
                 assert sol.stats()["success"]
-                break
+
+                neg_log_lik = sol.value(opti["opti"].f)
+
+                if neg_log_lik < best_neg_log_lik:
+                    best_neg_log_lik = neg_log_lik
+                    best_sol = sol
+
+                if self.result_type == "first":
+                    break
 
             except (RuntimeError, AssertionError):
                 continue
 
-        if sol is None:
+        if best_sol is None:
             raise ValueError("Optimization failed. No solution found.")
 
-        hessian = sol.value(ca.hessian(opti["opti"].f, opti["opti"].x)[0])
-        self.theta = sol.value(opti["theta"])
+        hessian = best_sol.value(ca.hessian(opti["opti"].f, opti["opti"].x)[0])
+        self.theta = best_sol.value(opti["theta"])
         self.covar = np.array(ca.inv(hessian))
+
 
         if self.is_corner_solution:
             warnings.warn("Corner solution encountered!")
