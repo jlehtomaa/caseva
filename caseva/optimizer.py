@@ -254,6 +254,5 @@ class MLEOptimizer(ABC):
         self.theta = best_sol.value(opti["theta"])
         self.covar = np.array(ca.inv(hessian))
 
-
         if self.is_corner_solution:
             warnings.warn("Corner solution encountered!")

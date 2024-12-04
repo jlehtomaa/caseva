@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
-from caseva.common import build_return_level_func
+from caseva.distributions.genpareto import GenPareto
 
 OPTIM_BOUNDS = np.array([
     [1e-8, 50],  # Scale, \sigma
@@ -55,41 +55,41 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
             Seed for generating random optimizer restarts.
         """
 
-        self.data = data
         self.threshold = threshold
+        self.num_observations = data.size
 
-        extremes = data[data > threshold]
+        excesses = data[data > threshold] - threshold
 
-        if extremes.size == 0:
+        if excesses.size == 0:
             raise ValueError("Too high threshold, no values exceed it!")
 
         super().__init__(
-            extremes=extremes,
+            data=excesses,
             seed=seed,
             max_optim_restarts=max_optim_restarts,
             num_years=num_years,
             optim_bounds=OPTIM_BOUNDS
         )
 
+        self.dist = GenPareto()
+
         # Evaluate return levels with the augmented parameter vector (including
         # the threshold exceedance probability `zeta`, see Coles (2001) p. 82)
-        self.return_level_fn = build_return_level_func(
+        self.return_level_fn = self._build_return_level_func(
             self.num_params + 1, self.return_level_expr)
-
-        self.excesses = extremes - threshold
 
         # The probability of an individual observation exceeding the
         # high threshold u (parameter `zeta` in Coles (2001.)).
-        self.thresh_exc_proba = len(self.excesses) / len(self.data)
+        self.thresh_exc_proba = excesses.size / self.num_observations
 
-    def constraints_fn(self, theta: ca.MX, extremes: ca.DM) -> List[ca.MX]:
+    def constraints_fn(self, theta: ca.MX, data: ca.DM) -> List[ca.MX]:
         """Builds the log likelihood constraints for the numerical optimizer.
 
         Parameters
         ----------
         theta : ca.MX
             Symbolic placeholder for the maximum likelihood parameter estimate.
-        extremes : ca.DM
+        data : ca.DM
             Observed extreme values.
 
         Returns
@@ -103,13 +103,13 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         constr = [
             (self.optim_bounds[:, 0] <= theta) <= self.optim_bounds[:, 1],
-            1. + shape * extremes / scale > 1e-6
+            1. + shape * data / scale > 1e-6
         ]
 
         return constr
 
     @staticmethod
-    def optimizer_initial_guess(extremes: ca.DM) -> List[float]:
+    def optimizer_initial_guess(data: ca.DM) -> List[float]:
         """Derive the initial guess for the MLE optimizer.
 
         Use the same value as in the 'ismev' R package that accompanies the
@@ -120,76 +120,13 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         Arguments:
         ----------
-        extremes : ca.DM
+        data : ca.DM
             The extreme observations used for maximum likelihood estimation.
         """
 
-        scale_init = np.sqrt(6. * np.var(extremes)) / np.pi
+        scale_init = np.sqrt(6. * np.var(data)) / np.pi
         shape_init = 0.1
         return [scale_init, shape_init]
-
-    def cdf(self, x: np.ndarray) -> np.ndarray:
-        """Cumulative distribution function for Gen-Pareto distribution.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Sample quantiles to evaluate.
-
-        Returns
-        -------
-        np.ndarray
-            Cumulative distribution function value between 0 and 1.
-
-        Raises
-        ------
-        ValueError
-            If any input value is outside of the GPD domain when
-            the shape parameter is negative.
-
-        Notes
-        -----
-        See Coles (2001) p.75 eq. (4.2) and p.76 eq. (4.4). The `x` values
-        correspond to the threshold excess values.
-        """
-
-        scale, shape = self.theta
-
-        if (x <= 0).any():
-            raise ValueError("Exceedances must be strictly greater than zero.")
-
-        if shape < 0:
-            support_upper_limit = -scale / shape
-            if np.any(x > support_upper_limit):
-                raise ValueError("Input value outside of support.")
-            return 1. - np.exp(-x / scale)
-
-        return 1. - (1. + shape * x / scale) ** (-1. / shape)
-
-    def pdf(self, x: np.ndarray) -> np.ndarray:
-        """Probability density function for Gen-Pareto distribution.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Sample points.
-
-        Returns
-        -------
-        np.ndarray
-            Probability density values.
-
-        Notes
-        -----
-        Hoskins p. 339 eq. (2).
-        """
-
-        scale, shape = self.theta
-
-        if np.abs(shape) < self.tiny:
-            return np.exp(-x / scale) / scale
-
-        return ((1. + shape * x / scale) ** (-(1. / shape + 1.))) / scale
 
     def log_likelihood(self, theta: ca.MX, excesses: ca.DM) -> ca.MX:
         """Generalized Pareto Distribution log likelihood.
@@ -226,29 +163,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
             - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
         )
 
-    def quantile(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
-        """Symbolic expression for the Gen-Pareto distribution quantiles.
-
-        Parameters
-        ----------
-        theta : ca.MX
-            Symbolic placeholder for the maximum likelihood parameters.
-        proba : ca.MX
-            Non-exceedance probability.
-
-        Notes
-        -----
-        Coles 2001 p.84
-        Hosking & Wallis (1987)
-        """
-        scale, shape = theta
-
-        shape_zero = - scale * ca.log(1 - proba)
-        shape_nonz = - (scale / shape) * (1. - (1. - proba) ** (-shape))
-
-        return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
-
-    def return_level_expr(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
+    def return_level_expr(self, augmented_theta: ca.MX, proba: ca.MX) -> ca.MX:
         """Symbolic expression for the GPD return level (threshold + excess).
 
         Parameters
@@ -269,13 +184,8 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         Coles (2001)  p. 82. / p.84
         """
 
-        _, scale, shape = ca.vertsplit(theta)
-
-        return self.threshold + self.quantile([scale, shape], 1 - proba)
-
-    def fit(self) -> None:
-        """Fit the maximum likelihood parameters."""
-        self._fit(self.excesses)
+        # Ignore the first element in augmented_theta
+        return self.dist.quantile(augmented_theta[1:], 1 - proba)
 
     @property
     def augmented_covar(self) -> np.ndarray:
@@ -293,12 +203,16 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         # exceeding the high threshold.
         exc_freq_variance = (
             self.thresh_exc_proba
-            * (1 - self.thresh_exc_proba) / len(self.data)
+            * (1 - self.thresh_exc_proba) / self.num_observations
         )
         covar[0, 0] = exc_freq_variance
         covar[1:, 1:] = self.covar
 
         return covar
+
+    @property
+    def augmented_theta(self):
+        return np.concatenate([[self.thresh_exc_proba], self.theta])
 
     def return_level(self, return_period: np.ndarray) -> Dict[str, np.ndarray]:
         """Infer return level values based on return periods.
@@ -317,10 +231,8 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         return_period = np.atleast_2d(return_period)  # for casadi broadcasting
 
-        augmented_theta = np.concatenate([[self.thresh_exc_proba], self.theta])
-
         # Annualized average rate of exceeding the high threshold u.
-        annual_rate_thresh_exceed = len(self.excesses) / self.num_years
+        annual_rate_thresh_exceed = len(self.data) / self.num_years
 
         # Given that threshold exceedances happen `annual_rate_thresh_exceed`
         # times per year on average, what is the magnitude of an event that
@@ -329,19 +241,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         adj_exceed_proba = 1. / (return_period * annual_rate_thresh_exceed)
 
         return self.return_level_fn(
-            theta=augmented_theta,
+            theta=self.augmented_theta,
             proba=adj_exceed_proba,
             covar=self.augmented_covar
         )
-
-    def probability_plot(self, ax: plt.Axes, **plot_kwargs) -> plt.Axes:
-        """Plot empirical and modelled (cumul.) probabilities of extremes."""
-        return self._probability_plot(ax, self.excesses, **plot_kwargs)
-
-    def quantile_plot(self, ax: plt.Axes, **plot_kwargs) -> plt.Axes:
-        """Plot empirical and modelled quantiles of extremes."""
-        return self._quantile_plot(ax, self.excesses, **plot_kwargs)
-
-    def density_plot(self, ax: plt.Axes, **plot_kwargs) -> plt.Axes:
-        """Plot empirical and modelled probability densities of extremes."""
-        return self._density_plot(ax, self.excesses, **plot_kwargs)
