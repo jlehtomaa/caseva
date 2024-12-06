@@ -5,14 +5,13 @@ See Coles (2001) Chapter 3.
 from typing import List, Dict, Optional
 import numpy as np
 import casadi as ca
-import matplotlib.pyplot as plt
 
 from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
 from caseva.distributions.genextreme import GenExtreme
 
 
-OPTIM_BOUNDS = np.array([
+DEFAULT_OPTIM_BOUNDS = np.array([
     [-100, 50],  # Location, \mu
     [1e-8, 50],  # Scale, \sigma
     [-1, 10]     # Shape, \xi
@@ -22,7 +21,7 @@ See discussion in Coles (2001) p. 55 for the shape parameter constraints.
 """
 
 
-class BlockMaximaModel(MLEOptimizer, BaseModel):
+class BlockMaximaModel(BaseModel):
     """Classical extreme value model with annual block maxima."""
 
     num_params = 3
@@ -32,6 +31,7 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         data: np.ndarray,
         num_years: Optional[int] = None,
         max_optim_restarts: int = 0,
+        optim_bounds = None,
         seed: int = 0
     ):
         """
@@ -51,24 +51,31 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
 
         super().__init__(
             data=data,
-            seed=seed,
-            max_optim_restarts=max_optim_restarts,
             num_years=num_years,
-            optim_bounds=OPTIM_BOUNDS
         )
 
         self.dist = GenExtreme()
+        self.optimizer = MLEOptimizer(
+            seed=seed,
+            max_optim_restarts=max_optim_restarts
+        )
+
+        if optim_bounds is None:
+            optim_bounds = DEFAULT_OPTIM_BOUNDS
+
+        self.optim_bounds = optim_bounds
+
         self.return_level_fn = self._build_return_level_func(
             self.num_params, self.return_level_expr)
 
-    def constraints_fn(self, theta: ca.MX, extremes: ca.DM) -> List[ca.MX]:
+    def constraints_fn(self, theta: ca.MX, data: ca.DM) -> List[ca.MX]:
         """Builds the log likelihood constraints for the numerical optimizer.
 
         Parameters
         ----------
         theta : ca.MX
             Symbolic placeholder for the maximum likelihood parameter estimate.
-        extremes : ca.DM
+        data : ca.DM
             Observed extreme values.
 
         Returns
@@ -85,14 +92,12 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         loc, scale, shape = ca.vertsplit(theta)
 
         constr = [
-            (self.optim_bounds[:, 0] <= theta) <= self.optim_bounds[:, 1],
-            1. + shape * ((extremes - loc) / scale) > 0.
+            1. + shape * ((data - loc) / scale) > 0.
         ]
 
         return constr
 
-    @staticmethod
-    def optimizer_initial_guess(extremes: ca.DM) -> List[float]:
+    def optimizer_initial_guess(self) -> np.ndarray:
         """Derive the initial guess for the MLE optimization.
 
         Use the same value as in the 'ismev' R package that accompanies the
@@ -112,11 +117,11 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
             An initial guess for each of the fitted parameters.
         """
 
-        scale_init = np.sqrt(6. * np.var(extremes)) / np.pi
-        loc_init = np.mean(extremes) - 0.57722 * scale_init
+        scale_init = np.sqrt(6. * np.var(self.data)) / np.pi
+        loc_init = np.mean(self.data) - 0.57722 * scale_init
         shape_init = 0.1
 
-        return [loc_init, scale_init, shape_init]
+        return np.array([loc_init, scale_init, shape_init])
 
     def log_likelihood(self, theta: ca.MX, extremes: ca.DM) -> ca.MX:
         """GEV log likelihood function symbolic expression.
@@ -177,7 +182,6 @@ class BlockMaximaModel(MLEOptimizer, BaseModel):
         The return level with 10% exceedance probability is the
         90th percentile, which we can directly evaluate based on the
         GEV quantile function.
-
         """
 
         # Evaluate quantile at the corresponding NON-exceedance probability!

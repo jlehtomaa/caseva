@@ -5,19 +5,18 @@ Implementation of the threshold excess model with a GenPareto distribution.
 from typing import List, Dict
 import numpy as np
 import casadi as ca
-import matplotlib.pyplot as plt
 
 from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
 from caseva.distributions.genpareto import GenPareto
 
-OPTIM_BOUNDS = np.array([
+DEFAULT_OPTIM_BOUNDS = np.array([
     [1e-8, 50],  # Scale, \sigma
     [-1, 10]     # Shape, \xi
 ])
 
 
-class ThresholdExcessModel(MLEOptimizer, BaseModel):
+class ThresholdExcessModel(BaseModel):
     """
     Threshold excess model with a generalized Pareto distribution.
 
@@ -36,6 +35,7 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         threshold: float,
         num_years: int,
         max_optim_restarts: int = 0,
+        optim_bounds = None,
         seed: int = 0
     ):
         """
@@ -65,13 +65,19 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         super().__init__(
             data=excesses,
-            seed=seed,
-            max_optim_restarts=max_optim_restarts,
             num_years=num_years,
-            optim_bounds=OPTIM_BOUNDS
         )
 
         self.dist = GenPareto()
+        self.optimizer = MLEOptimizer(
+            seed=seed,
+            max_optim_restarts=max_optim_restarts
+        )
+
+        if optim_bounds is None:
+            optim_bounds = DEFAULT_OPTIM_BOUNDS
+
+        self.optim_bounds = optim_bounds
 
         # Evaluate return levels with the augmented parameter vector (including
         # the threshold exceedance probability `zeta`, see Coles (2001) p. 82)
@@ -102,14 +108,12 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
         scale, shape = ca.vertsplit(theta)
 
         constr = [
-            (self.optim_bounds[:, 0] <= theta) <= self.optim_bounds[:, 1],
             1. + shape * data / scale > 1e-6
         ]
 
         return constr
 
-    @staticmethod
-    def optimizer_initial_guess(data: ca.DM) -> List[float]:
+    def optimizer_initial_guess(self) -> np.ndarray:
         """Derive the initial guess for the MLE optimizer.
 
         Use the same value as in the 'ismev' R package that accompanies the
@@ -120,13 +124,13 @@ class ThresholdExcessModel(MLEOptimizer, BaseModel):
 
         Arguments:
         ----------
-        data : ca.DM
+        data : np.ndarray
             The extreme observations used for maximum likelihood estimation.
         """
 
-        scale_init = np.sqrt(6. * np.var(data)) / np.pi
+        scale_init = np.sqrt(6. * np.var(self.data)) / np.pi
         shape_init = 0.1
-        return [scale_init, shape_init]
+        return np.array([scale_init, shape_init])
 
     def log_likelihood(self, theta: ca.MX, excesses: ca.DM) -> ca.MX:
         """Generalized Pareto Distribution log likelihood.

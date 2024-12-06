@@ -4,10 +4,11 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict
 
 import numpy as np
+import pandas as pd
 import casadi as ca
 import matplotlib.pyplot as plt
 
-from caseva.common import empirical_return_periods, ca2np
+from caseva.common import ca2np
 
 
 DEFAULT_PLOT_RETURN_PERIODS = np.linspace(1.1, 1000, 500)
@@ -32,7 +33,7 @@ class BaseModel(ABC):
 
     tiny = 1e-8  # Small number for evaluating values close to zero.
 
-    def __init__(self, data: np.ndarray, num_years: int, *args, **kwargs):
+    def __init__(self, data: np.ndarray, num_years: int):
         """Base model class for extreme value analysis.
 
         Parameters
@@ -43,7 +44,7 @@ class BaseModel(ABC):
             Indicates how many years of observations does `data` correspond
             to. Used for evaluating return levels, not for fitting parameters.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.data = data
         self.num_years = num_years
 
@@ -51,9 +52,17 @@ class BaseModel(ABC):
         self.theta: Optional[np.ndarray] = None
         self.covar: Optional[np.ndarray] = None
 
-    def fit(self) -> None:
-        """Fit the maximum likelihood parameters."""
-        self._fit(self.data)
+    def fit(self):
+
+        initial_guess = self.optimizer_initial_guess()
+
+        self.theta, self.covar = self.optimizer.solve(
+            data=self.data,
+            objective_fn=self.log_likelihood,
+            constraints_fn=self.constraints_fn,
+            initial_guess=initial_guess,
+            optim_bounds=self.optim_bounds
+        )
 
     def _build_return_level_func(
         self,
@@ -203,6 +212,14 @@ class BaseModel(ABC):
 
         return ax
 
+    def empirical_return_periods(self):
+
+        sorted_values = np.sort(self.data)[::-1]  # descending
+        ranking = np.arange(1, len(sorted_values) + 1)
+
+        return_periods = (self.num_years + 1) / ranking
+        return pd.Series(data=sorted_values, index=return_periods).sort_index()
+
     def _return_level_plot(
         self,
         ax: plt.Axes,
@@ -228,7 +245,7 @@ class BaseModel(ABC):
         if return_periods is None:
             return_periods = DEFAULT_PLOT_RETURN_PERIODS
 
-        emp_rp = empirical_return_periods(self.data, self.num_years)
+        emp_rp = self.empirical_return_periods()
         emp_rp = emp_rp[emp_rp.index >= 1]  # Filter tiny RPs out for visuals.
 
         # Determining where to start plotting the return levels:
