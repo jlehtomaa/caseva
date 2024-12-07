@@ -1,12 +1,14 @@
 import numpy as np
 import casadi as ca
+from caseva.utils import is_almost_zero
 
 
 class GenExtreme:
 
-    tiny = 1e-8
+    num_params = 3
 
-    def cdf(self, x: np.ndarray, theta) -> np.ndarray:
+    @staticmethod
+    def cdf(x: np.ndarray, theta) -> np.ndarray:
         """Cumulative distribution function for GEV distribution.
 
         Parameters
@@ -28,14 +30,15 @@ class GenExtreme:
         loc, scale, shape = theta
         xnorm = (x - loc) / scale
 
-        if np.abs(shape) < self.tiny:
+        if is_almost_zero(shape):
             tx = np.exp(-xnorm)
         else:
             tx = (1. + shape * xnorm) ** (-1. / shape)
 
         return np.exp(-tx)
 
-    def pdf(self, x: np.ndarray, theta) -> np.ndarray:
+    @staticmethod
+    def pdf(x: np.ndarray, theta) -> np.ndarray:
         """Probability density function for GEV distribution.
 
         Parameters
@@ -55,14 +58,15 @@ class GenExtreme:
         loc, scale, shape = theta
         ynorm = (x - loc) / scale
 
-        if np.abs(shape) < self.tiny:
+        if is_almost_zero(shape):
             tx = np.exp(-ynorm)
         else:
             tx = (1. + shape * ynorm) ** (-1. / shape)
 
         return (1. / scale) * tx ** (shape + 1) * np.exp(-tx)
 
-    def quantile(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
+    @staticmethod
+    def quantile(theta: ca.MX, proba: ca.MX) -> ca.MX:
         """Symbolic expression for the GEV distribution quantiles.
 
         Parameters
@@ -96,4 +100,4 @@ class GenExtreme:
         shape_zero = loc - scale * ca.log(log_prob)
         shape_nonz = loc - (scale / shape) * (1. - log_prob ** (-shape))
 
-        return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+        return ca.if_else(is_almost_zero(shape), shape_zero, shape_nonz)

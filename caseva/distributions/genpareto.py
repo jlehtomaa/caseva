@@ -1,12 +1,14 @@
 import numpy as np
 import casadi as ca
+from caseva.utils import is_almost_zero
 
 
 class GenPareto:
 
-    tiny = 1e-8
+    num_params = 2
 
-    def cdf(self, x: np.ndarray, theta) -> np.ndarray:
+    @staticmethod
+    def cdf(x: np.ndarray, theta) -> np.ndarray:
         """Cumulative distribution function for Gen-Pareto distribution.
 
         Parameters
@@ -44,7 +46,8 @@ class GenPareto:
 
         return 1. - (1. + shape * x / scale) ** (-1. / shape)
 
-    def pdf(self, x: np.ndarray, theta) -> np.ndarray:
+    @staticmethod
+    def pdf(x: np.ndarray, theta) -> np.ndarray:
         """Probability density function for Gen-Pareto distribution.
 
         Parameters
@@ -64,12 +67,13 @@ class GenPareto:
 
         scale, shape = theta
 
-        if np.abs(shape) < self.tiny:
+        if is_almost_zero(shape):
             return np.exp(-x / scale) / scale
 
         return ((1. + shape * x / scale) ** (-(1. / shape + 1.))) / scale
 
-    def quantile(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
+    @staticmethod
+    def quantile(theta: ca.MX, proba: ca.MX) -> ca.MX:
         """Symbolic expression for the Gen-Pareto distribution quantiles.
 
         Parameters
@@ -88,6 +92,6 @@ class GenPareto:
         scale, shape = ca.vertsplit(theta)
 
         shape_zero = - scale * ca.log(1 - proba)
-        shape_nonz = - (scale / shape) * (1. - (1. - proba) ** (-shape))
+        shape_nonzero = - (scale / shape) * (1. - (1. - proba) ** (-shape))
 
-        return ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+        return ca.if_else(is_almost_zero(shape), shape_zero, shape_nonzero)

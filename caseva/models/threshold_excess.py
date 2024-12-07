@@ -6,9 +6,11 @@ from typing import List, Dict
 import numpy as np
 import casadi as ca
 
-from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
+from caseva.optimizer import MLEOptimizer
 from caseva.distributions.genpareto import GenPareto
+from caseva.utils import is_almost_zero
+
 
 DEFAULT_OPTIM_BOUNDS = np.array([
     [1e-8, 50],  # Scale, \sigma
@@ -27,15 +29,10 @@ class ThresholdExcessModel(BaseModel):
     See Coles (2001) p.82.
     """
 
-    num_params = 2
-
     def __init__(
         self,
-        data: np.ndarray,
-        threshold: float,
-        num_years: int,
         max_optim_restarts: int = 0,
-        optim_bounds = None,
+        optim_bounds: np.ndarray = None,
         seed: int = 0
     ):
         """
@@ -55,18 +52,7 @@ class ThresholdExcessModel(BaseModel):
             Seed for generating random optimizer restarts.
         """
 
-        self.threshold = threshold
-        self.num_observations = data.size
-
-        excesses = data[data > threshold] - threshold
-
-        if excesses.size == 0:
-            raise ValueError("Too high threshold, no values exceed it!")
-
-        super().__init__(
-            data=excesses,
-            num_years=num_years,
-        )
+        super().__init__()
 
         self.dist = GenPareto()
         self.optimizer = MLEOptimizer(
@@ -82,11 +68,9 @@ class ThresholdExcessModel(BaseModel):
         # Evaluate return levels with the augmented parameter vector (including
         # the threshold exceedance probability `zeta`, see Coles (2001) p. 82)
         self.return_level_fn = self._build_return_level_func(
-            self.num_params + 1, self.return_level_expr)
-
-        # The probability of an individual observation exceeding the
-        # high threshold u (parameter `zeta` in Coles (2001.)).
-        self.thresh_exc_proba = excesses.size / self.num_observations
+            num_mle_params=self.dist.num_params + 1,
+            return_level_expr=self.return_level_expr
+        )
 
     def constraints_fn(self, theta: ca.MX, data: ca.DM) -> List[ca.MX]:
         """Builds the log likelihood constraints for the numerical optimizer.
@@ -157,14 +141,14 @@ class ThresholdExcessModel(BaseModel):
         scale, shape = ca.vertsplit(theta)
 
         shape_zero = ca.sum1(excesses) / scale
-        shape_nonz = (
+        shape_nonzero = (
             (1. + 1. / shape)
             * ca.sum1(ca.log(1. + shape * excesses / scale))
         )
 
         return (
             - excesses.size1() * ca.log(scale)
-            - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+            - ca.if_else(is_almost_zero(shape), shape_zero, shape_nonzero)
         )
 
     def return_level_expr(self, augmented_theta: ca.MX, proba: ca.MX) -> ca.MX:
@@ -249,3 +233,24 @@ class ThresholdExcessModel(BaseModel):
             proba=adj_exceed_proba,
             covar=self.augmented_covar
         )
+
+    def fit(self, data, threshold, num_years):
+
+        self.threshold = threshold
+        self.num_years = num_years
+
+        self.threshold = threshold
+        self.num_observations = data.size
+
+        excesses = data[data > threshold] - threshold
+
+        if excesses.size == 0:
+            raise ValueError("Too high threshold, no values exceed it!")
+
+        self.data = excesses
+
+        # The probability of an individual observation exceeding the
+        # high threshold u (parameter `zeta` in Coles (2001.)).
+        self.thresh_exc_proba = excesses.size / self.num_observations
+
+        self._run_optimizer()

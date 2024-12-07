@@ -1,14 +1,14 @@
 """
 Implementation of the classical extreme value model with (annual) block maxima.
-See Coles (2001) Chapter 3.
 """
-from typing import List, Dict, Optional
+from typing import List, Dict
 import numpy as np
 import casadi as ca
 
-from caseva.optimizer import MLEOptimizer
 from caseva.models import BaseModel
+from caseva.optimizer import MLEOptimizer
 from caseva.distributions.genextreme import GenExtreme
+from caseva.utils import is_almost_zero
 
 
 DEFAULT_OPTIM_BOUNDS = np.array([
@@ -24,35 +24,23 @@ See discussion in Coles (2001) p. 55 for the shape parameter constraints.
 class BlockMaximaModel(BaseModel):
     """Classical extreme value model with annual block maxima."""
 
-    num_params = 3
-
     def __init__(
         self,
-        data: np.ndarray,
-        num_years: Optional[int] = None,
         max_optim_restarts: int = 0,
-        optim_bounds = None,
+        optim_bounds: np.ndarray = None,
         seed: int = 0
     ):
         """
 
         Parameters
         ----------
-        data : np.ndarray
-            A 1d array of observed extreme values (annual maxima).
         max_optim_restarts : int, default = 0
             How many randomly initialized optimizer restarts to perform if no
             solution is found.
         seed : int, default = 0
             Seed for generating random optimizer restarts.
         """
-
-        num_years = data.size  # Assume input to be annual maxima.
-
-        super().__init__(
-            data=data,
-            num_years=num_years,
-        )
+        super().__init__()
 
         self.dist = GenExtreme()
         self.optimizer = MLEOptimizer(
@@ -66,7 +54,9 @@ class BlockMaximaModel(BaseModel):
         self.optim_bounds = optim_bounds
 
         self.return_level_fn = self._build_return_level_func(
-            self.num_params, self.return_level_expr)
+            num_mle_params=self.dist.num_params,
+            return_level_expr=self.return_level_expr
+        )
 
     def constraints_fn(self, theta: ca.MX, data: ca.DM) -> List[ca.MX]:
         """Builds the log likelihood constraints for the numerical optimizer.
@@ -90,10 +80,7 @@ class BlockMaximaModel(BaseModel):
         """
 
         loc, scale, shape = ca.vertsplit(theta)
-
-        constr = [
-            1. + shape * ((data - loc) / scale) > 0.
-        ]
+        constr = [1. + shape * ((data - loc) / scale) > 0.]
 
         return constr
 
@@ -149,7 +136,7 @@ class BlockMaximaModel(BaseModel):
 
         shape_zero = ca.sum1(znorm) + ca.sum1(ca.exp(-znorm))  # Gumbel limit
 
-        shape_nonz = (
+        shape_nonzero = (
             (1. + 1. / shape)
             * ca.sum1(ca.log(1. + shape * znorm))
             + ca.sum1((1. + shape*znorm) ** (-1./shape))
@@ -157,7 +144,7 @@ class BlockMaximaModel(BaseModel):
 
         return (
             mlogs
-            - ca.if_else(ca.fabs(shape) < self.tiny, shape_zero, shape_nonz)
+            - ca.if_else(is_almost_zero(shape), shape_zero, shape_nonzero)
         )
 
     def return_level_expr(self, theta: ca.MX, proba: ca.MX) -> ca.MX:
@@ -208,3 +195,10 @@ class BlockMaximaModel(BaseModel):
         return self.return_level_fn(
             theta=self.theta, proba=exceedance_proba, covar=self.covar
         )
+
+    def fit(self, data):
+
+        self.data = data
+        self.num_years = data.size
+
+        self._run_optimizer()

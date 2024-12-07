@@ -8,7 +8,7 @@ import pandas as pd
 import casadi as ca
 import matplotlib.pyplot as plt
 
-from caseva.common import ca2np
+from caseva.utils import ca2np
 
 
 DEFAULT_PLOT_RETURN_PERIODS = np.linspace(1.1, 1000, 500)
@@ -31,9 +31,7 @@ class BaseModel(ABC):
         calling the `fit` method.
     """
 
-    tiny = 1e-8  # Small number for evaluating values close to zero.
-
-    def __init__(self, data: np.ndarray, num_years: int):
+    def __init__(self):
         """Base model class for extreme value analysis.
 
         Parameters
@@ -44,15 +42,12 @@ class BaseModel(ABC):
             Indicates how many years of observations does `data` correspond
             to. Used for evaluating return levels, not for fitting parameters.
         """
-        super().__init__()
-        self.data = data
-        self.num_years = num_years
 
         # Attributes calculated when calling the `fit` method.
         self.theta: Optional[np.ndarray] = None
         self.covar: Optional[np.ndarray] = None
 
-    def fit(self):
+    def _run_optimizer(self):
 
         initial_guess = self.optimizer_initial_guess()
 
@@ -97,13 +92,20 @@ class BaseModel(ABC):
         grad = ca.jacobian(level, theta)
         error = 1.96 * ca.sqrt(grad @ covar @ grad.T)
 
-        return ca.Function(
+        ca_func = ca.Function(
             "return_level_fn",
             [theta, proba, covar],
             [level, level+error, level-error],
             ["theta", "proba", "covar"],
             ["level", "upper", "lower"]
         )
+
+        def np_func(theta, proba, covar):
+            """Convert result from casadi matrices to numpy arrays."""
+            res = ca_func(theta=theta, proba=proba, covar=covar)
+            return {k: ca2np(v) for (k, v) in res.items()}
+
+        return np_func
 
     @abstractmethod
     def return_level(self, return_period: np.ndarray) -> Dict[str, np.ndarray]:
@@ -256,11 +258,11 @@ class BaseModel(ABC):
 
         return_levels = self.return_level(return_periods)
 
-        ax.plot(return_periods, ca2np(return_levels["level"]))
+        ax.plot(return_periods, return_levels["level"])
 
         if return_level_uncertainty:
-            upper = ca2np(return_levels["upper"])
-            lower = ca2np(return_levels["lower"])
+            upper = return_levels["upper"]
+            lower = return_levels["lower"]
             ax.fill_between(return_periods, upper, lower, alpha=0.4)
 
         ax.scatter(emp_rp.index, emp_rp.values, **scatter_kwargs)
@@ -285,7 +287,9 @@ class BaseModel(ABC):
 
         ax.hist(self.data, density=True, rwidth=0.95)
         density_axis = np.linspace(self.data.min(), self.data.max(), 100)
-        ax.plot(density_axis, self.dist.pdf(density_axis, self.theta), color="k")
+        ax.plot(
+            density_axis, self.dist.pdf(density_axis, self.theta), color="k"
+        )
         ax.set_xlabel("z")
         ax.set_ylabel("f(z)")
         ax.set_title("Density plot")
