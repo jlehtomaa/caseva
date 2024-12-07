@@ -16,8 +16,8 @@ def fitted_model_sealevel():
     data = pd.read_csv(PATH_DATA / "portpirie.csv")
     extremes = data["SeaLevel"]
 
-    model = BlockMaximaModel(data=extremes)
-    model.fit()
+    model = BlockMaximaModel()
+    model.fit(data=extremes)
 
     return model
 
@@ -29,8 +29,8 @@ def fitted_model_glassfiber():
     data = pd.read_csv(PATH_DATA / "glass.csv")
     extremes = -data["Strength"]
 
-    model = BlockMaximaModel(data=extremes)
-    model.fit()
+    model = BlockMaximaModel()
+    model.fit(data=extremes)
 
     return model
 

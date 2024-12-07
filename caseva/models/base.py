@@ -214,7 +214,7 @@ class BaseModel(ABC):
 
         return ax
 
-    def empirical_return_periods(self):
+    def empirical_return_periods(self) -> pd.Series:
 
         sorted_values = np.sort(self.data)[::-1]  # descending
         ranking = np.arange(1, len(sorted_values) + 1)

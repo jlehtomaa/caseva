@@ -17,11 +17,9 @@ def fitted_model_rainfall():
     num_years = max(years) - min(years) + 1
     threshold = 30
 
-    model = ThresholdExcessModel(
-        data=data["Rainfall"], threshold=threshold, num_years=num_years
-    )
+    model = ThresholdExcessModel()
 
-    model.fit()
+    model.fit(data=data["Rainfall"], threshold=threshold, num_years=num_years)
     return model
 
 
@@ -38,11 +36,9 @@ def fitted_model_dowjones():
         - np.log(data["Index"])[:-1].values
     ) * 100.
 
-    model = ThresholdExcessModel(
-        data=transformed_data, threshold=threshold, num_years=num_years
-    )
+    model = ThresholdExcessModel()
 
-    model.fit()
+    model.fit(data=transformed_data, threshold=threshold, num_years=num_years)
     return model
 
 

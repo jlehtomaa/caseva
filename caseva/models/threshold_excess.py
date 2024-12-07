@@ -4,6 +4,7 @@ Implementation of the threshold excess model with a GenPareto distribution.
 
 from typing import List, Dict
 import numpy as np
+import pandas as pd
 import casadi as ca
 
 from caseva.models import BaseModel
@@ -228,11 +229,13 @@ class ThresholdExcessModel(BaseModel):
 
         adj_exceed_proba = 1. / (return_period * annual_rate_thresh_exceed)
 
-        return self.return_level_fn(
+        excess_levels = self.return_level_fn(
             theta=self.augmented_theta,
             proba=adj_exceed_proba,
             covar=self.augmented_covar
         )
+
+        return {k: v + self.threshold for (k, v) in excess_levels.items()}
 
     def fit(self, data, threshold, num_years):
 
@@ -254,3 +257,10 @@ class ThresholdExcessModel(BaseModel):
         self.thresh_exc_proba = excesses.size / self.num_observations
 
         self._run_optimizer()
+
+    def empirical_return_periods(self) -> pd.Series:
+        """Adjust the empirical return levels by threshold size.
+        In practice, we are interested in the value of the actual events,
+        not the value of the threshold exceedance.
+        """
+        return super().empirical_return_periods() + self.threshold
