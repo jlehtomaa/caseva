@@ -235,6 +235,8 @@ class ThresholdExcessModel(BaseModel):
             covar=self.augmented_covar
         )
 
+        # Add in the threshold to model the actual event values, not only the
+        # threshold exceedance levels.
         return {k: v + self.threshold for (k, v) in excess_levels.items()}
 
     def fit(self, data, threshold, num_years):
