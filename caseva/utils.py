@@ -1,3 +1,5 @@
+"""Helper functions used in multiple modules."""
+
 import numpy as np
 import casadi as ca
 
