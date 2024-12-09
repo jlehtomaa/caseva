@@ -142,6 +142,8 @@ class MLEOptimizer():
         if self._is_corner_solution(theta, optim_bounds):
             warnings.warn("Corner solution encountered!")
             self.is_corner_solution = True
+        else:
+            self.is_corner_solution = False
 
         return theta, covar
 
