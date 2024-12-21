@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caseva"
+version = "0.1.0"
+description = "CASadi Extreme Value Analysis."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26.0",
+    "pandas>=2.1.0",
+    "xarray>=2024.1.1",
+    "casadi>=3.6.0",
+]
+
+[project.optional-dependencies]
+tutorial = [
+    "cdsapi>=0.7.5",
+]
