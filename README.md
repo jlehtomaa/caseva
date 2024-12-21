@@ -5,7 +5,7 @@
 
 This package provides a simple entry point to the 1-dimensional extreme value analysis as explained in the standard extreme value reference: [Stuart Coles (2001): An Introduction to Statistical Modeling of Extreme Values](https://link.springer.com/book/10.1007/978-1-4471-3675-0).
 
-In short, this covers:
+In short, this package features:
 - Two models:
     - The Block Maxima model, based on the general extreme value distribution
     - The Peaks-Over-Threshold model, based on the generalized Pareto distribution
@@ -20,26 +20,32 @@ Create the virtual environment:
 conda create --name caseva_env python=3.11.2
 ```
 
-Navigate to the root of the directory, and install locally:
+Activate the environment:
+
+```
+conda activate caseva_env
+```
+
+Navigate to the root of the directory, and install the package locally:
 
 ```
 pip install -e .
 ```
 
-For the additional dependencies for running the tutorial notebooks (for instance, for fetching data from the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/)), run:
+For the additional dependencies required for running all the tutorial notebooks (for instance, for fetching data from the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/)), run:
 
 ```
 pip install -e .[tutorial]
 ```
 
-## Example use
+## Quickstart
 
 ```python
 import numpy as np
 import pandas as pd
 from caseva.models import BlockMaximaModel
 
-# Load data
+# Load data (annual block maxima)
 data = pd.read_csv("<path-to-your-dataset>")
 extremes = data["<data-variable-name>"]
 
@@ -49,12 +55,26 @@ model.fit(data=extremes)
 
 # Evaluate
 model.diagnostic_plot()
+
+# Return level inference
+model.return_level(return_period=[10, 100, 200])
 ```
 
 ## Tutorials
 
-#### References mentioned in the code
+The `notebooks` folder contains the following tutorials:
+
+- `01_tutorial.ipynb`. A first tutorial replicating the relevant numerical examples in [Coles (2001)](https://link.springer.com/book/10.1007/978-1-4471-3675-0).
+
+- `02_wind_storm_application.ipynb`. A real-world example where we first fetch [reanalysis](https://www.ecmwf.int/en/about/media-centre/focus/2023/fact-sheet-reanalysis) data on European winterstorm wind fields and derive a return period map for the entire area. Obtaining the data requires registering as a user to the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/).
+
+- `03_automated_threshold_selection.ipynb`. The main difficulty for large-scale application with the peaks-over-threshold approach is selecting the high threshold above which the generalized Pareto distribution fit is valid. A large body of applied work has investigated how to automate the threshold selection process. In this notebook, we illustrate this work by replicating the method explained in [Murphy et al. (2024): Automated threshold selection and associated inference uncertainty for univariate extremes
+](https://arxiv.org/abs/2310.17999).
+
+#### References cited in the code
 
 Coles (2001): An Introduction to Statistical Modeling of Extreme Values. Springer Series in Statistics.
 
 Hosking & Wallis (1987): Parameter and Quantile Estimation for the Generalized Pareto Distribution. Technometrics, August 1987, Vol. 29 No. 3.
+
+Murphy et al. (2024): Automated threshold selection and associated inference uncertainty for univariate extremes.
