@@ -244,7 +244,6 @@ class ThresholdExcessModel(BaseModel):
         self.threshold = threshold
         self.num_years = num_years
 
-        self.threshold = threshold
         self.num_observations = data.size
 
         excesses = data[data > threshold] - threshold
