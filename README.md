@@ -68,8 +68,6 @@ The `notebooks` folder contains the following tutorials:
 
 - `02_wind_storm_application.ipynb`. A real-world example where we first fetch [reanalysis](https://www.ecmwf.int/en/about/media-centre/focus/2023/fact-sheet-reanalysis) data on European winterstorm wind fields and derive a return period map for the entire area. Obtaining the data requires registering as a user to the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/).
 
-- `03_automated_threshold_selection.ipynb`. The main difficulty for large-scale application with the peaks-over-threshold approach is selecting the high threshold above which the generalized Pareto distribution fit is valid. A large body of applied work has investigated how to automate the threshold selection process. In this notebook, we illustrate this work by replicating the method explained in [Murphy et al. (2024): Automated threshold selection and associated inference uncertainty for univariate extremes
-](https://arxiv.org/abs/2310.17999).
 
 #### References cited in the code
 
@@ -77,4 +75,3 @@ Coles (2001): An Introduction to Statistical Modeling of Extreme Values. Springe
 
 Hosking & Wallis (1987): Parameter and Quantile Estimation for the Generalized Pareto Distribution. Technometrics, August 1987, Vol. 29 No. 3.
 
-Murphy et al. (2024): Automated threshold selection and associated inference uncertainty for univariate extremes.
