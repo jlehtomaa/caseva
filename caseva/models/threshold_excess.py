@@ -30,12 +30,7 @@ class ThresholdExcessModel(BaseModel):
     See Coles (2001) p.82.
     """
 
-    def __init__(
-        self,
-        max_optim_restarts: int = 0,
-        optim_bounds: np.ndarray = None,
-        seed: int = 0
-    ):
+    def __init__(self, max_optim_restarts: int = 0, seed: int = 0):
         """
 
         Parameters
@@ -60,11 +55,6 @@ class ThresholdExcessModel(BaseModel):
             seed=seed,
             max_optim_restarts=max_optim_restarts
         )
-
-        if optim_bounds is None:
-            optim_bounds = DEFAULT_OPTIM_BOUNDS
-
-        self.optim_bounds = optim_bounds
 
         # Evaluate return levels with the augmented parameter vector (including
         # the threshold exceedance probability `zeta`, see Coles (2001) p. 82)
@@ -239,7 +229,7 @@ class ThresholdExcessModel(BaseModel):
         # threshold exceedance levels.
         return {k: v + self.threshold for (k, v) in excess_levels.items()}
 
-    def fit(self, data, threshold, num_years):
+    def fit(self, data, threshold, num_years, optim_bounds: np.ndarray = None):
 
         self.threshold = threshold
         self.num_years = num_years
@@ -257,7 +247,10 @@ class ThresholdExcessModel(BaseModel):
         # high threshold u (parameter `zeta` in Coles (2001.)).
         self.thresh_exc_proba = excesses.size / self.num_observations
 
-        self._run_optimizer()
+        if optim_bounds is None:
+            optim_bounds = DEFAULT_OPTIM_BOUNDS
+
+        self._run_optimizer(optim_bounds=optim_bounds)
 
     def empirical_return_periods(self) -> pd.Series:
         """Adjust the empirical return levels by threshold size.

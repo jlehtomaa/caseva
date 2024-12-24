@@ -47,7 +47,7 @@ class BaseModel(ABC):
         self.theta: Optional[np.ndarray] = None
         self.covar: Optional[np.ndarray] = None
 
-    def _run_optimizer(self):
+    def _run_optimizer(self, optim_bounds):
 
         initial_guess = self.optimizer_initial_guess()
 
@@ -56,7 +56,7 @@ class BaseModel(ABC):
             objective_fn=self.log_likelihood,
             constraints_fn=self.constraints_fn,
             initial_guess=initial_guess,
-            optim_bounds=self.optim_bounds
+            optim_bounds=optim_bounds
         )
 
     def _build_return_level_func(

@@ -8,13 +8,15 @@ class GenPareto:
     num_params = 2
 
     @staticmethod
-    def cdf(x: np.ndarray, theta) -> np.ndarray:
+    def cdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
         """Cumulative distribution function for Gen-Pareto distribution.
 
         Parameters
         ----------
         x : np.ndarray
             Sample quantiles to evaluate.
+        theta : np.ndarray
+            Parameters of the fitted distribution.
 
         Returns
         -------
@@ -47,13 +49,15 @@ class GenPareto:
         return 1. - (1. + shape * x / scale) ** (-1. / shape)
 
     @staticmethod
-    def pdf(x: np.ndarray, theta) -> np.ndarray:
+    def pdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
         """Probability density function for Gen-Pareto distribution.
 
         Parameters
         ----------
         x : np.ndarray
             Sample points.
+        theta : np.ndarray
+            Parameters of the fitted distribution.
 
         Returns
         -------
@@ -82,6 +86,13 @@ class GenPareto:
             Symbolic placeholder for the maximum likelihood parameters.
         proba : ca.MX
             Non-exceedance probability.
+
+        Returns
+        -------
+        ca.MX
+            Casadi symbolic quantile expression. Represents a value such that
+            a random variable has a `proba` probability of being less than or
+            equal to that value.
 
         Notes
         -----

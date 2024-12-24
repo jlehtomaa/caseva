@@ -24,12 +24,7 @@ See discussion in Coles (2001) p. 55 for the shape parameter constraints.
 class BlockMaximaModel(BaseModel):
     """Classical extreme value model with annual block maxima."""
 
-    def __init__(
-        self,
-        max_optim_restarts: int = 0,
-        optim_bounds: np.ndarray = None,
-        seed: int = 0
-    ):
+    def __init__(self, max_optim_restarts: int = 0, seed: int = 0):
         """
 
         Parameters
@@ -47,11 +42,6 @@ class BlockMaximaModel(BaseModel):
             seed=seed,
             max_optim_restarts=max_optim_restarts
         )
-
-        if optim_bounds is None:
-            optim_bounds = DEFAULT_OPTIM_BOUNDS
-
-        self.optim_bounds = optim_bounds
 
         self.return_level_fn = self._build_return_level_func(
             num_mle_params=self.dist.num_params,
@@ -196,9 +186,12 @@ class BlockMaximaModel(BaseModel):
             theta=self.theta, proba=exceedance_proba, covar=self.covar
         )
 
-    def fit(self, data):
+    def fit(self, data, optim_bounds: np.ndarray = None):
 
         self.data = data
         self.num_years = data.size
 
-        self._run_optimizer()
+        if optim_bounds is None:
+            optim_bounds = DEFAULT_OPTIM_BOUNDS
+
+        self._run_optimizer(optim_bounds=optim_bounds)

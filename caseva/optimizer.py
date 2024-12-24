@@ -1,6 +1,4 @@
-"""
-Maximum Likelihood Estimator class. Sets up the Casadi optimizer.
-"""
+"""Maximum Likelihood Estimator class. Sets up the Casadi optimizer."""
 
 import warnings
 from typing import Tuple, Dict, Any, Callable

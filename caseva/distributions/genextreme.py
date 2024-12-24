@@ -8,13 +8,15 @@ class GenExtreme:
     num_params = 3
 
     @staticmethod
-    def cdf(x: np.ndarray, theta) -> np.ndarray:
+    def cdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
         """Cumulative distribution function for GEV distribution.
 
         Parameters
         ----------
         x : np.ndarray
             Sample quantiles to evaluate.
+        theta : np.ndarray
+            Parameters of the fitted distribution.
 
         Returns
         -------
@@ -38,13 +40,15 @@ class GenExtreme:
         return np.exp(-tx)
 
     @staticmethod
-    def pdf(x: np.ndarray, theta) -> np.ndarray:
+    def pdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
         """Probability density function for GEV distribution.
 
         Parameters
         ----------
         x : np.ndarray
             Sample points.
+        theta : np.ndarray
+            Parameters of the fitted distribution.
 
         Returns
         -------
