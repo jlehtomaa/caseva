@@ -3,13 +3,13 @@
 
 ## Introduction
 
-This package provides a simple entry point to the 1-dimensional extreme value analysis as explained in the standard extreme value reference: [Stuart Coles (2001): An Introduction to Statistical Modeling of Extreme Values](https://link.springer.com/book/10.1007/978-1-4471-3675-0).
+This package provides a simple entry point to 1-dimensional extreme value analysis as explained in the standard reference: [Stuart Coles (2001): An Introduction to Statistical Modeling of Extreme Values](https://link.springer.com/book/10.1007/978-1-4471-3675-0).
 
 In short, this package features:
 - Two models:
-    - The Block Maxima model, based on the general extreme value distribution
+    - The Block Maxima model (for annual blocks), based on the general extreme value distribution
     - The Peaks-Over-Threshold model, based on the generalized Pareto distribution
-- Maximum likelihood solver based on [casadi](https://web.casadi.org/), a modern, open-source, and reliable tool for non-linear optimization and algorithmic differentiation.
+- Maximum likelihood solver implemented using [casadi](https://web.casadi.org/), a modern, open-source, and reliable tool for non-linear optimization and algorithmic differentiation.
 
 
 ## Installation
@@ -36,6 +36,12 @@ For the additional dependencies required for running all the tutorial notebooks 
 
 ```
 pip install -e .[tutorial]
+```
+
+For development work, also add the `dev` dependencies with:
+
+```
+pip install -e .[development]
 ```
 
 ## Quickstart
