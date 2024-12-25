@@ -38,7 +38,7 @@ For the additional dependencies required for running all the tutorial notebooks 
 pip install -e ".[tutorial]"
 ```
 
-For development work, also add the `test` dependencies with:
+For development work/testing, also add the `test` dependencies with:
 
 ```
 pip install -e ".[test]"
@@ -47,7 +47,6 @@ pip install -e ".[test]"
 ## Quickstart
 
 ```python
-import numpy as np
 import pandas as pd
 from caseva.models import BlockMaximaModel
 
