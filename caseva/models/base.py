@@ -8,7 +8,7 @@ import pandas as pd
 import casadi as ca
 import matplotlib.pyplot as plt
 
-from caseva.utils import ca2np
+from caseva.utils import ca2np, ecdf
 
 
 DEFAULT_PLOT_RETURN_PERIODS = np.linspace(1.1, 1000, 500)
@@ -29,25 +29,29 @@ class BaseModel(ABC):
     covar : Optional[np.ndarray]
         Covariance matric of the fitted extreme value parameters. Set when
         calling the `fit` method.
+    dist : GenExtreme | GenPareto
+        Distribution corresponding to the extreme value model.
+    optimizer : MLEOptimizer
+        A symbolic maximum-likelihood -based optimizer.
     """
 
     def __init__(self):
-        """Base model class for extreme value analysis.
+        """Base model class for extreme value analysis."""
 
-        Parameters
-        ----------
-        data : np.ndarray
-            A 1d array of observed values.
-        num_years : int
-            Indicates how many years of observations does `data` correspond
-            to. Used for evaluating return levels, not for fitting parameters.
-        """
-
-        # Attributes calculated when calling the `fit` method.
+        # Attributes calculated when calling the `_run_optimizer` method.
         self.theta: Optional[np.ndarray] = None
         self.covar: Optional[np.ndarray] = None
 
-    def _run_optimizer(self, optim_bounds):
+    def _run_optimizer(self, optim_bounds: np.ndarray) -> None:
+        """Fit the extreme value distribution parameters with MLE.
+
+        Parameters
+        ----------
+        optim_bounds : np.ndarray
+            Upper and lower bounds for finding the optimal parameter vector.
+            Must be of shape (n, 2), where n is the size of the parameter
+            vector.
+        """
 
         initial_guess = self.optimizer_initial_guess()
 
@@ -59,8 +63,8 @@ class BaseModel(ABC):
             optim_bounds=optim_bounds
         )
 
+    @staticmethod
     def _build_return_level_func(
-        self,
         num_mle_params: int,
         return_level_expr: ca.MX
     ) -> ca.Function:
@@ -123,26 +127,6 @@ class BaseModel(ABC):
             The keys are `level`, `upper`, and `lower`.
         """
 
-    def ecdf(self, values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Empirical cumulative distribution function.
-
-        Parameters
-        ----------
-        values : np.ndarray
-            Observed data values.
-
-        Returns
-        -------
-        tuple[np.ndarray, np.ndarray]
-            (quantiles, probabilities): Quantiles are the sorted `values`,
-            and probabilities are the empirical cumulative probabilities.
-        """
-
-        quantiles = np.sort(values)
-        probabilities = np.arange(1, len(quantiles) + 1) / (len(quantiles) + 1)
-
-        return quantiles, probabilities
-
     def _quantile_plot(
         self,
         ax: plt.Axes,
@@ -164,7 +148,7 @@ class BaseModel(ABC):
         Coles (2001) p. 37 / p. 58.
         """
 
-        emp_quantiles, emp_probas = self.ecdf(self.data)
+        emp_quantiles, emp_probas = ecdf(self.data)
         model_quantiles = ca2np(self.dist.quantile(self.theta, emp_probas))
 
         ax.scatter(model_quantiles, emp_quantiles, **scatter_kwargs)
@@ -179,11 +163,7 @@ class BaseModel(ABC):
 
         return ax
 
-    def _probability_plot(
-        self,
-        ax: plt.Axes,
-        **scatter_kwargs
-    ) -> plt.Axes:
+    def _probability_plot(self, ax: plt.Axes, **scatter_kwargs) -> plt.Axes:
         """Plots modelled and empirical distribution funtions.
 
         For a good fit model, the points should fall close to a 45-deg line.
@@ -192,8 +172,6 @@ class BaseModel(ABC):
         ----------
         ax : plt.Axes
             The matplotlib axes on which to plot the distribution function.
-        data : np.ndarray
-            The observed data.
         scatter_kwargs
             Additional style keyword arguments for the scatter plot.
 
@@ -202,7 +180,7 @@ class BaseModel(ABC):
         Coles (2001) p. 37 / p. 58.
         """
 
-        emp_quantiles, emp_probas = self.ecdf(self.data)
+        emp_quantiles, emp_probas = ecdf(self.data)
         model_probas = self.dist.cdf(emp_quantiles, self.theta)
 
         ax.scatter(emp_probas, model_probas, **scatter_kwargs)
@@ -215,6 +193,14 @@ class BaseModel(ABC):
         return ax
 
     def empirical_return_periods(self) -> pd.Series:
+        """Get empirical return periods of each input data point.
+
+        Returns
+        -------
+        pd.Series
+            A series where the index denotes the return periods and data the
+            corresponding return values.
+        """
 
         sorted_values = np.sort(self.data)[::-1]  # descending
         ranking = np.arange(1, len(sorted_values) + 1)
@@ -229,7 +215,7 @@ class BaseModel(ABC):
         return_level_uncertainty: bool = True,
         **scatter_kwargs
     ) -> plt.Axes:
-        """Plot modelled return levels.
+        """Plot modelled and empirical return levels.
 
         Parameters
         ----------
@@ -241,14 +227,13 @@ class BaseModel(ABC):
             Whether to add the uncertainty range to the plot.
         scatter_kwargs
             Additional style keyword arguments for the scatter plot.
-
         """
 
         if return_periods is None:
             return_periods = DEFAULT_PLOT_RETURN_PERIODS
 
         emp_rp = self.empirical_return_periods()
-        emp_rp = emp_rp[emp_rp.index >= 1]  # Filter tiny RPs out for visuals.
+        emp_rp = emp_rp[emp_rp.index >= 1]  # Filter tiny RPs to reduce clutter
 
         # Determining where to start plotting the return levels:
         # somewhere between the requested lowest return period and the
@@ -282,7 +267,6 @@ class BaseModel(ABC):
         ----------
         ax : plt.Axes
             Axis on which to plot.
-
         """
 
         ax.hist(self.data, density=True, rwidth=0.95)

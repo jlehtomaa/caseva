@@ -35,13 +35,13 @@ pip install -e .
 For the additional dependencies required for running all the tutorial notebooks (for instance, for fetching data from the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/)), run:
 
 ```
-pip install -e .[tutorial]
+pip install -e ".[tutorial]"
 ```
 
-For development work, also add the `dev` dependencies with:
+For development work, also add the `test` dependencies with:
 
 ```
-pip install -e .[development]
+pip install -e ".[test]"
 ```
 
 ## Quickstart

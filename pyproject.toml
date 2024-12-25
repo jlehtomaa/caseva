@@ -13,12 +13,19 @@ dependencies = [
     "pandas>=2.1.0",
     "xarray>=2024.1.1",
     "casadi>=3.6.0",
+    "ipykernel>=6.29",
+    "matplotlib>=3.8",
 ]
+
+[tool.setuptools]
+packages = ["caseva"]
 
 [project.optional-dependencies]
 tutorial = [
     "cdsapi>=0.7.5",
+    "requests>=2.31.0",
+    "dask[complete]>=2024.1.1",
 ]
-development = [
+test = [
     "pytest>=3.8.8"
 ]

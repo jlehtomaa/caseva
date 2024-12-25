@@ -1,7 +1,7 @@
 """
 Implementation of the classical extreme value model with (annual) block maxima.
 """
-from typing import List, Dict
+from typing import List, Dict, Optional
 import numpy as np
 import casadi as ca
 
@@ -24,23 +24,36 @@ See discussion in Coles (2001) p. 55 for the shape parameter constraints.
 class BlockMaximaModel(BaseModel):
     """Classical extreme value model with annual block maxima."""
 
-    def __init__(self, max_optim_restarts: int = 0, seed: int = 0):
+    def __init__(
+        self,
+        seed: int = 0,
+        max_optim_restarts: int = 0,
+        result_type: str = "first"
+    ):
         """
 
         Parameters
         ----------
+        seed : int, default = 0
+            Seed for generating random optimizer restarts.
         max_optim_restarts : int, default = 0
             How many randomly initialized optimizer restarts to perform if no
             solution is found.
-        seed : int, default = 0
-            Seed for generating random optimizer restarts.
+        result_type : str, default="first"
+            When `max_optim_restarts` is > 0, the solver can either return the
+            first solution that was found with `result_type` set to "first",
+            or the one with the highest likelihood by setting this variable
+            to "best". The latter can provide better parameter estimates when
+            the optimization space is non-convex, although with a computational
+            cost.
         """
         super().__init__()
 
         self.dist = GenExtreme()
         self.optimizer = MLEOptimizer(
             seed=seed,
-            max_optim_restarts=max_optim_restarts
+            max_optim_restarts=max_optim_restarts,
+            result_type=result_type
         )
 
         self.return_level_fn = self._build_return_level_func(
@@ -83,14 +96,9 @@ class BlockMaximaModel(BaseModel):
         The scale_init is based on the method of moments for a Gumbel
         distribution.
 
-        Parameters
-        ----------
-        extremes : ca.DM
-            Observed extreme values.
-
         Returns
         -------
-        list of float
+        np.ndarray
             An initial guess for each of the fitted parameters.
         """
 
@@ -161,7 +169,6 @@ class BlockMaximaModel(BaseModel):
         GEV quantile function.
         """
 
-        # Evaluate quantile at the corresponding NON-exceedance probability!
         return self.dist.quantile(theta, 1. - proba)
 
     def return_level(self, return_period: np.ndarray) -> Dict[str, np.ndarray]:
@@ -186,7 +193,22 @@ class BlockMaximaModel(BaseModel):
             theta=self.theta, proba=exceedance_proba, covar=self.covar
         )
 
-    def fit(self, data, optim_bounds: np.ndarray = None):
+    def fit(
+        self,
+        data: np.ndarray,
+        optim_bounds: Optional[np.ndarray] = None
+    ) -> None:
+        """Fit the extreme value distribution to the data.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            A 1d array of observed values.
+        optim_bounds : np.ndarray
+            Upper and lower bounds for finding the optimal parameter vector.
+            Must be of shape (n, 2), where n is the size of the parameter
+            vector.
+        """
 
         self.data = data
         self.num_years = data.size

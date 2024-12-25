@@ -1,3 +1,5 @@
+"""Generalized Pareto Distribution functions: cdf, pdf, quantile."""
+
 import numpy as np
 import casadi as ca
 from caseva.utils import is_almost_zero
@@ -5,11 +7,11 @@ from caseva.utils import is_almost_zero
 
 class GenPareto:
 
-    num_params = 2
+    num_params = 2  # scale, shape
 
     @staticmethod
     def cdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
-        """Cumulative distribution function for Gen-Pareto distribution.
+        """Cumulative dist. function for generalized Pareto distribution.
 
         Parameters
         ----------
@@ -28,6 +30,7 @@ class GenPareto:
         ValueError
             If any input value is outside of the GPD domain when
             the shape parameter is negative.
+            If the input values (threshold exceedances) are non-positive.
 
         Notes
         -----
@@ -50,7 +53,7 @@ class GenPareto:
 
     @staticmethod
     def pdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
-        """Probability density function for Gen-Pareto distribution.
+        """Probability density function for generalized Pareto distribution.
 
         Parameters
         ----------
@@ -66,7 +69,7 @@ class GenPareto:
 
         Notes
         -----
-        Hoskins p. 339 eq. (2).
+        Hoskins (1987) p. 339 eq. (2).
         """
 
         scale, shape = theta

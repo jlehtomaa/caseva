@@ -1,3 +1,5 @@
+"""Generalized Extreme Value Distribution functions: cdf, pdf, quantile."""
+
 import numpy as np
 import casadi as ca
 from caseva.utils import is_almost_zero
@@ -5,7 +7,7 @@ from caseva.utils import is_almost_zero
 
 class GenExtreme:
 
-    num_params = 3
+    num_params = 3  # location, scale, shape
 
     @staticmethod
     def cdf(x: np.ndarray, theta: np.ndarray) -> np.ndarray:
@@ -16,7 +18,7 @@ class GenExtreme:
         x : np.ndarray
             Sample quantiles to evaluate.
         theta : np.ndarray
-            Parameters of the fitted distribution.
+            Parameters of the fitted GEV distribution.
 
         Returns
         -------

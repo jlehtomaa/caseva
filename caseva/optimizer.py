@@ -23,6 +23,55 @@ https://coin-or.github.io/Ipopt/OPTIONS.html
 """
 
 
+def _validate_inputs(
+    data: np.ndarray,
+    initial_guess: np.ndarray,
+    optim_bounds: np.ndarray
+) -> None:
+    """Check that the inputs for the optimizer are valid.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The array of observed extreme value data. Must be one-dimensional.
+    initial_guess : np.ndarray
+        Initial guess of the optimal parameter vector.
+    optim_bounds : np.ndarray
+        Upper and lower bounds for finding the optimal parameter vector.
+        Must be of shape (n, 2), where n is the size of the parameter
+        vector.
+
+    Raises
+    ------
+    ValueError
+        If the `data` array is not 1-dimensional.
+        If the shape of `optim_bounds` does not match the shape of
+        `initial_guess`.
+        If any of the lower bounds in `optim_bounds` is strictly larger
+        than the corresponding upper bound.
+    """
+
+    if np.array(data).ndim != 1:
+        raise ValueError("`data` must be a 1-dimensional array.")
+
+    if np.max(np.abs(data)) > 100.0:
+        warnings.warn(
+            "Encountered large absolute data values. Consider rescaling "
+            "for better optimizer performance."
+        )
+
+    if optim_bounds.shape != (initial_guess.size, 2):
+        raise ValueError(
+            "The optimizer bounds shape must be exactly (n, 2), where n "
+            "is the size of the parameter vector `theta`."
+        )
+
+    if np.any(optim_bounds[:, 0] > optim_bounds[:, 1]):
+        raise ValueError(
+            "Optimizer lower bound cannot be larger than the lower bound."
+        )
+
+
 class MLEOptimizer():
     """Class for a maximum likelihood estimation in casadi."""
 
@@ -94,9 +143,10 @@ class MLEOptimizer():
             If the optimization fails and no solution is found.
         """
 
-        self._validate_inputs(data, initial_guess, optim_bounds)
+        _validate_inputs(data, initial_guess, optim_bounds)
         opti = self._initialize_solver(
-            data, objective_fn, constraints_fn, initial_guess, optim_bounds)
+            data, objective_fn, constraints_fn, initial_guess, optim_bounds
+        )
 
         best_sol = None
         best_neg_log_lik = np.inf
@@ -144,55 +194,6 @@ class MLEOptimizer():
             self.is_corner_solution = False
 
         return theta, covar
-
-    @staticmethod
-    def _validate_inputs(
-        data: np.ndarray,
-        initial_guess: np.ndarray,
-        optim_bounds: np.ndarray
-    ) -> None:
-        """Check that the inputs for the optimizer are valid.
-
-        Parameters
-        ----------
-        data : np.ndarray
-            The array of observed extreme value data. Must be one-dimensional.
-        initial_guess : np.ndarray
-            Initial guess of the optimal parameter vector.
-        optim_bounds : np.ndarray
-            Upper and lower bounds for finding the optimal parameter vector.
-            Must be of shape (n, 2), where n is the size of the parameter
-            vector.
-
-        Raises
-        ------
-        ValueError
-            If the `data` array is not 1-dimensional.
-            If the shape of `optim_bounds` does not match the shape of
-            `initial_guess`.
-            If any of the lower bounds in `optim_bounds` is strictly larger
-            than the corresponding upper bound.
-        """
-
-        if np.array(data).ndim != 1:
-            raise ValueError("`data` must be a 1-dimensional array.")
-
-        if np.max(np.abs(data)) > 100.0:
-            warnings.warn(
-                "Encountered large absolute data values. Consider rescaling "
-                "for better optimizer performance."
-            )
-
-        if optim_bounds.shape != (initial_guess.size, 2):
-            raise ValueError(
-                "The optimizer bounds shape must be exactly (n, 2), where n "
-                "is the size of the parameter vector `theta`."
-            )
-
-        if np.any(optim_bounds[:, 0] > optim_bounds[:, 1]):
-            raise ValueError(
-                "Optimizer lower bound cannot be larger than the lower bound."
-            )
 
     @staticmethod
     def _initialize_solver(

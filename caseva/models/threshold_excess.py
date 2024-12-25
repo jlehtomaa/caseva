@@ -2,7 +2,7 @@
 Implementation of the threshold excess model with a GenPareto distribution.
 """
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 import numpy as np
 import pandas as pd
 import casadi as ca
@@ -30,22 +30,28 @@ class ThresholdExcessModel(BaseModel):
     See Coles (2001) p.82.
     """
 
-    def __init__(self, max_optim_restarts: int = 0, seed: int = 0):
+    def __init__(
+        self,
+        seed: int = 0,
+        max_optim_restarts: int = 0,
+        result_type: str = "first"
+    ):
         """
 
         Parameters
         ----------
-        data : np.ndarray
-            All observed data.
-        threshold : float
-            Observations exceeding this high threshold are considered extreme.
-        num_years : int
-            How many years of observations does the data correspond to.
+        seed : int, default = 0
+            Seed for generating random optimizer restarts.
         max_optim_restarts : int, default = 0
             How many randomly initialized optimizer restarts to perform if no
             solution is found.
-        seed : int, default = 0
-            Seed for generating random optimizer restarts.
+        result_type : str, default="first"
+            When `max_optim_restarts` is > 0, the solver can either return the
+            first solution that was found with `result_type` set to "first",
+            or the one with the highest likelihood by setting this variable
+            to "best". The latter can provide better parameter estimates when
+            the optimization space is non-convex, although with a computational
+            cost.
         """
 
         super().__init__()
@@ -53,7 +59,8 @@ class ThresholdExcessModel(BaseModel):
         self.dist = GenPareto()
         self.optimizer = MLEOptimizer(
             seed=seed,
-            max_optim_restarts=max_optim_restarts
+            max_optim_restarts=max_optim_restarts,
+            result_type=result_type
         )
 
         # Evaluate return levels with the augmented parameter vector (including
@@ -77,14 +84,11 @@ class ThresholdExcessModel(BaseModel):
         -------
         constr : list of ca.MX
             Collection of symbolic constraint expressions.
-
         """
 
         scale, shape = ca.vertsplit(theta)
 
-        constr = [
-            1. + shape * data / scale > 1e-6
-        ]
+        constr = [1. + shape * data / scale > 0.]
 
         return constr
 
@@ -96,11 +100,6 @@ class ThresholdExcessModel(BaseModel):
 
         The scale_init is based on the method of moments for Gumbel
         distribution.
-
-        Arguments:
-        ----------
-        data : np.ndarray
-            The extreme observations used for maximum likelihood estimation.
         """
 
         scale_init = np.sqrt(6. * np.var(self.data)) / np.pi
@@ -114,7 +113,6 @@ class ThresholdExcessModel(BaseModel):
         ---------
         theta : ca.MX
             Casadi symbolic expression for the MLE parameters.
-
         excesses : ca.DM
             The extreme observations used for maximum likelihood estimation.
 
@@ -126,7 +124,6 @@ class ThresholdExcessModel(BaseModel):
         Notes
         -----
         Coles (2001) p.80 eq. 4.10.
-
         """
 
         scale, shape = ca.vertsplit(theta)
@@ -147,8 +144,9 @@ class ThresholdExcessModel(BaseModel):
 
         Parameters
         ----------
-        theta : ca.MX
-            Casadi symbolic placeholder for the maximum likelihood parameters.
+        augmented_theta : ca.MX
+            Casadi symbolic placeholder for the maximum likelihood parameters,
+            augmented with the threshold exceedance probability `zeta`.
         proba : ca.MX
             Exceedance probability (corresponding to the 1 / proba return
             level).
@@ -168,12 +166,11 @@ class ThresholdExcessModel(BaseModel):
 
     @property
     def augmented_covar(self) -> np.ndarray:
-        """Covariance matrix of fitted params with the exceedence probability.
+        """Covariance matrix of fitted params and the exceedence probability.
 
         Notes
         -----
         Coles (2001) p.82, definition of V.
-
         """
 
         covar = np.zeros((3, 3))
@@ -191,10 +188,12 @@ class ThresholdExcessModel(BaseModel):
 
     @property
     def augmented_theta(self):
+        """The Genpareto parameters with the threshold exceedance probability.
+        """
         return np.concatenate([[self.thresh_exc_proba], self.theta])
 
     def return_level(self, return_period: np.ndarray) -> Dict[str, np.ndarray]:
-        """Infer return level values based on return periods.
+        """Return level values (excess + thresh.) based on return periods.
 
         Parameters
         ----------
@@ -229,7 +228,29 @@ class ThresholdExcessModel(BaseModel):
         # threshold exceedance levels.
         return {k: v + self.threshold for (k, v) in excess_levels.items()}
 
-    def fit(self, data, threshold, num_years, optim_bounds: np.ndarray = None):
+    def fit(
+        self,
+        data: np.ndarray,
+        threshold: float,
+        num_years: int,
+        optim_bounds: Optional[np.ndarray] = None
+    ):
+        """
+        Parameters
+        ----------
+        data : np.ndarray
+            A 1d array of observed values.
+        threshold : float
+            The high threshold above which the generalized Pareto distribution
+            is considered a valid approximation of the process.
+        num_years : int
+            Indicates how many years of observations does `data` correspond
+            to. Used for evaluating return levels, not for fitting parameters.
+        optim_bounds : np.ndarray
+            Upper and lower bounds for finding the optimal parameter vector.
+            Must be of shape (n, 2), where n is the size of the parameter
+            vector.
+        """
 
         self.threshold = threshold
         self.num_years = num_years
